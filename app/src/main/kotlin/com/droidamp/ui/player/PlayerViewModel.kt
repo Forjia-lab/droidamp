@@ -177,11 +177,25 @@ class PlayerViewModel @Inject constructor(
         if (_playerState.value.isPlaying) attachVisualizer()
     }
 
+    // onIsPlayingChanged(true) races with onAudioSessionIdChanged in the service because
+    // they are dispatched on different threads. We poll until the session ID is non-zero
+    // (ExoPlayer allocates the AudioTrack shortly after playback begins, typically <500 ms).
     private fun attachVisualizer() {
         detachVisualizer()
-        // Use the real ExoPlayer audio session if available; fall back to 0 (global output mix)
-        val sessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: 0
-        Log.d("Droidamp", "attachVisualizer: sessionId=$sessionId isPlaying=${_playerState.value.isPlaying}")
+        viewModelScope.launch {
+            var sessionId = DroidampPlaybackService.audioSessionId
+            var waited = 0
+            while (sessionId == 0 && waited < 3000) {
+                delay(100)
+                waited += 100
+                sessionId = DroidampPlaybackService.audioSessionId
+            }
+            Log.d("Droidamp", "attachVisualizer: sessionId=$sessionId after ${waited}ms wait")
+            doAttachVisualizer(sessionId)
+        }
+    }
+
+    private fun doAttachVisualizer(sessionId: Int) {
         try {
             visualizer = Visualizer(sessionId).apply {
                 captureSize = Visualizer.getCaptureSizeRange()[1]
@@ -193,7 +207,7 @@ class PlayerViewModel @Inject constructor(
                 }, Visualizer.getMaxCaptureRate() / 2, false, true)
                 enabled = true
             }
-            Log.d("Droidamp", "Visualizer attached successfully (sessionId=$sessionId)")
+            Log.d("Droidamp", "Visualizer attached OK (sessionId=$sessionId)")
         } catch (e: Exception) {
             Log.e("Droidamp", "Visualizer init failed (sessionId=$sessionId): ${e.javaClass.simpleName}: ${e.message}")
         }

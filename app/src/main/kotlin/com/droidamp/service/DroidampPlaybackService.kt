@@ -46,7 +46,11 @@ class DroidampPlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)   // pause on headphone unplug
             .build()
 
-        // Capture the real ExoPlayer audio session ID so the Visualizer can attach to it
+        // Seed the session ID immediately (ExoPlayer may pre-allocate it during build)
+        audioSessionId = player.audioSessionId
+        Log.d("Droidamp", "ExoPlayer initial audioSessionId = ${player.audioSessionId}")
+
+        // Update whenever ExoPlayer (re-)creates its AudioTrack
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onAudioSessionIdChanged(
                 eventTime: AnalyticsListener.EventTime,
