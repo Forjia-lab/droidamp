@@ -7,9 +7,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.security.MessageDigest
@@ -31,6 +34,9 @@ class ServerUrlProvider @Inject constructor(
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val _settingsUpdated = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val settingsUpdated = _settingsUpdated.asSharedFlow()
 
     private var _baseUrl: String
     private var _username: String
@@ -57,6 +63,7 @@ class ServerUrlProvider @Inject constructor(
                 prefs[KEY_USERNAME] = _username
                 prefs[KEY_PASSWORD] = _password
             }
+            _settingsUpdated.emit(Unit)
         }
     }
 
@@ -79,18 +86,22 @@ class SubsonicAuthInterceptor @Inject constructor(
     private val serverUrlProvider: ServerUrlProvider,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val original   = chain.request()
-        val urlBuilder = original.url.newBuilder()
-        val salt  = UUID.randomUUID().toString().replace("-", "").take(10)
-        val token = md5("${serverUrlProvider.password()}$salt")
-        urlBuilder
+        val original = chain.request()
+        val base     = serverUrlProvider.baseUrl().toHttpUrl()
+        val salt     = UUID.randomUUID().toString().replace("-", "").take(10)
+        val token    = md5("${serverUrlProvider.password()}$salt")
+        val newUrl   = original.url.newBuilder()
+            .scheme(base.scheme)
+            .host(base.host)
+            .port(base.port)
             .addQueryParameter("u", serverUrlProvider.username())
             .addQueryParameter("t", token)
             .addQueryParameter("s", salt)
             .addQueryParameter("v", "1.16.1")
             .addQueryParameter("c", "droidamp")
             .addQueryParameter("f", "json")
-        return chain.proceed(original.newBuilder().url(urlBuilder.build()).build())
+            .build()
+        return chain.proceed(original.newBuilder().url(newUrl).build())
     }
 
     private fun md5(input: String): String {

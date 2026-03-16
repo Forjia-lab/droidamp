@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
-import com.droidamp.data.api.ServerUrlProvider
 import com.droidamp.data.api.SubsonicApiService
 import com.droidamp.data.api.SubsonicAuthInterceptor
 import dagger.Module
@@ -42,11 +41,8 @@ object AppModule {
             .build()
 
     @Provides @Singleton
-    fun provideRetrofit(
-        okHttpClient: OkHttpClient,
-        serverUrlProvider: ServerUrlProvider,
-    ): Retrofit = Retrofit.Builder()
-        .baseUrl(serverUrlProvider.baseUrl() + "/")
+    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit = Retrofit.Builder()
+        .baseUrl("http://localhost/") // interceptor rewrites host/port dynamically
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create())
         .build()

@@ -2,6 +2,7 @@ package com.droidamp.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.droidamp.data.api.ServerUrlProvider
 import com.droidamp.data.repository.NavidromeRepository
 import com.droidamp.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,12 +30,20 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repo: NavidromeRepository,
+    private val serverUrlProvider: ServerUrlProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
-    init { loadAlbums() }
+    init {
+        loadAlbums()
+        viewModelScope.launch {
+            serverUrlProvider.settingsUpdated.collect { reload() }
+        }
+    }
+
+    fun reload() = selectTab(_uiState.value.tab)
 
     fun selectTab(tab: LibraryTab) {
         _uiState.update { it.copy(tab = tab) }
