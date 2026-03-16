@@ -81,19 +81,22 @@ fun LibraryScreen(
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f),
             )
-            if (uiState.selectedAlbum != null) {
+            if (uiState.selectedAlbum != null || uiState.selectedPlaylist != null) {
                 Text(
                     text = "← Back",
                     color = theme.fg2,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { libraryViewModel.clearAlbumSelection() },
+                    modifier = Modifier.clickable {
+                        libraryViewModel.clearAlbumSelection()
+                        libraryViewModel.clearPlaylistSelection()
+                    },
                 )
             }
         }
 
         // ── Tab bar ───────────────────────────────────────────
-        if (uiState.selectedAlbum == null) {
+        if (uiState.selectedAlbum == null && uiState.selectedPlaylist == null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -184,6 +187,17 @@ fun LibraryScreen(
                         },
                     )
                 }
+                uiState.selectedPlaylist != null -> {
+                    PlaylistTrackList(
+                        playlist = uiState.selectedPlaylist!!,
+                        tracks   = uiState.selectedPlaylistTracks,
+                        theme    = theme,
+                        onTrackClick = { idx ->
+                            playerViewModel.playTracks(uiState.selectedPlaylistTracks, idx)
+                            onNavigateBack()
+                        },
+                    )
+                }
                 uiState.tab is LibraryTab.Albums -> {
                     AlbumGrid(
                         albums = filteredAlbums,
@@ -217,7 +231,7 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { /* load playlist tracks */ }
+                                    .clickable { libraryViewModel.loadPlaylistTracks(pl) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                             ) {
                                 Text("≡", color = theme.accent, fontSize = 16.sp, modifier = Modifier.padding(end = 10.dp))
@@ -290,6 +304,65 @@ private fun AlbumGrid(
                 if (album.year > 0) Text(album.year.toString(), color = theme.fg2.copy(alpha = 0.5f), fontSize = 8.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 6.dp))
             }
+        }
+    }
+}
+
+// ─── Playlist track list ──────────────────────────────────────
+
+@Composable
+private fun PlaylistTrackList(
+    playlist: com.droidamp.domain.model.Playlist,
+    tracks: List<Track>,
+    theme: com.droidamp.ui.theme.DroidTheme,
+    onTrackClick: (Int) -> Unit,
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("≡", color = theme.accent, fontSize = 28.sp)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(playlist.name, color = theme.fg, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text(playlist.owner, color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("${playlist.trackCount} tracks", color = theme.fg2.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+            Divider(color = theme.border)
+        }
+        items(tracks.withIndex().toList()) { (idx, track) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTrackClick(idx) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "%02d".format(idx + 1),
+                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.width(24.dp),
+                )
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(
+                    text = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
+                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                )
+            }
+            Divider(color = theme.border, thickness = 0.5.dp)
         }
     }
 }
