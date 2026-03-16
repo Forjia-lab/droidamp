@@ -21,6 +21,7 @@ data class LibraryUiState(
     val artists: List<Artist>       = emptyList(),
     val albums: List<Album>         = emptyList(),
     val playlists: List<Playlist>   = emptyList(),
+    val tracks: List<Track>         = emptyList(),
     val selectedAlbumTracks: List<Track>    = emptyList(),
     val selectedAlbum: Album?               = null,
     val selectedArtist: Artist?             = null,
@@ -55,7 +56,7 @@ class LibraryViewModel @Inject constructor(
             LibraryTab.Albums    -> loadAlbums()
             LibraryTab.Artists   -> loadArtists()
             LibraryTab.Playlists -> loadPlaylists()
-            LibraryTab.Tracks    -> { /* search-based */ }
+            LibraryTab.Tracks    -> loadTracks()
         }
     }
 
@@ -100,6 +101,18 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun clearPlaylistSelection() { _uiState.update { it.copy(selectedPlaylist = null, selectedPlaylistTracks = emptyList()) } }
+
+    private fun loadTracks() {
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            repo.getRandomTracks().collect { result ->
+                result.fold(
+                    onSuccess = { tracks -> _uiState.update { it.copy(tracks = tracks, isLoading = false) } },
+                    onFailure = { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
+                )
+            }
+        }
+    }
 
     private fun loadAlbums() {
         _uiState.update { it.copy(isLoading = true) }

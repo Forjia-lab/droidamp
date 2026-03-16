@@ -23,83 +23,68 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Track
-import com.droidamp.ui.components.MiniPlayerBar
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidThemes
-
-// ─────────────────────────────────────────────────────────────
-//  LibraryScreen — browse your Navidrome library.
-//  Tabs: Albums · Artists · Playlists
-//  Tap album → see tracks → tap track → play from that position
-//  Persistent MiniPlayerBar at the bottom.
-// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun LibraryScreen(
     libraryViewModel: LibraryViewModel,
     playerViewModel: PlayerViewModel,
-    onNavigateBack: () -> Unit,
+    onNavigateToPlayer: () -> Unit,
 ) {
-    val uiState     by libraryViewModel.uiState.collectAsState()
-    val playerState by playerViewModel.playerState.collectAsState()
-    val theme       = DroidThemes.Catppuccin  // TODO: wire up shared theme state
+    val uiState by libraryViewModel.uiState.collectAsState()
+    val theme   = DroidThemes.Catppuccin
 
     var searchQuery by remember { mutableStateOf("") }
     val q = searchQuery.trim().lowercase()
 
-    val filteredAlbums    = if (q.isEmpty()) uiState.albums
-                            else uiState.albums.filter { q in it.name.lowercase() || q in it.artist.lowercase() }
-    val filteredArtists   = if (q.isEmpty()) uiState.artists
-                            else uiState.artists.filter { q in it.name.lowercase() }
-    val filteredPlaylists = if (q.isEmpty()) uiState.playlists
-                            else uiState.playlists.filter { q in it.name.lowercase() }
+    val filteredAlbums    = if (q.isEmpty()) uiState.albums    else uiState.albums.filter    { q in it.name.lowercase() || q in it.artist.lowercase() }
+    val filteredArtists   = if (q.isEmpty()) uiState.artists   else uiState.artists.filter   { q in it.name.lowercase() }
+    val filteredPlaylists = if (q.isEmpty()) uiState.playlists else uiState.playlists.filter { q in it.name.lowercase() }
+    val filteredTracks    = if (q.isEmpty()) uiState.tracks    else uiState.tracks.filter    { q in it.title.lowercase() || q in it.artist.lowercase() }
+
+    val drillDown = uiState.selectedAlbum != null || uiState.selectedPlaylist != null || uiState.selectedArtist != null
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.bg),
     ) {
-        // ── Header ────────────────────────────────────────────
+        // ── Header ───────────────────────────────────────────
         Row(
-            modifier = Modifier
+            modifier          = Modifier
                 .fillMaxWidth()
                 .background(theme.panel)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "←",
-                color = theme.accent,
-                fontSize = 18.sp,
-                modifier = Modifier.clickable(onClick = onNavigateBack).padding(end = 12.dp),
-            )
-            Text(
-                text = "LIBRARY",
-                color = theme.accent,
-                fontSize = 14.sp,
+                text       = "LIBRARY",
+                color      = theme.accent,
+                fontSize   = 14.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                modifier = Modifier.weight(1f),
+                modifier   = Modifier.weight(1f),
             )
-            if (uiState.selectedAlbum != null || uiState.selectedPlaylist != null || uiState.selectedArtist != null) {
+            if (drillDown) {
                 Text(
-                    text = "← Back",
-                    color = theme.fg2,
+                    text     = "← Back",
+                    color    = theme.fg2,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.clickable {
                         when {
-                            uiState.selectedAlbum != null -> libraryViewModel.clearAlbumSelection()
+                            uiState.selectedAlbum    != null -> libraryViewModel.clearAlbumSelection()
                             uiState.selectedPlaylist != null -> libraryViewModel.clearPlaylistSelection()
-                            else -> libraryViewModel.clearArtistSelection()
+                            else                             -> libraryViewModel.clearArtistSelection()
                         }
                     },
                 )
             }
         }
 
-        // ── Tab bar ───────────────────────────────────────────
-        if (uiState.selectedAlbum == null && uiState.selectedPlaylist == null && uiState.selectedArtist == null) {
+        // ── Tabs + search (only when not drilled-down) ───────
+        if (!drillDown) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -107,27 +92,27 @@ fun LibraryScreen(
                     .padding(horizontal = 12.dp),
             ) {
                 listOf(
-                    "Albums" to LibraryTab.Albums,
-                    "Artists" to LibraryTab.Artists,
+                    "Albums"    to LibraryTab.Albums,
+                    "Artists"   to LibraryTab.Artists,
+                    "Tracks"    to LibraryTab.Tracks,
                     "Playlists" to LibraryTab.Playlists,
                 ).forEach { (label, tab) ->
                     val active = uiState.tab::class == tab::class
                     Text(
-                        text = label,
-                        color = if (active) theme.accent else theme.fg2,
-                        fontSize = 11.sp,
+                        text       = label,
+                        color      = if (active) theme.accent else theme.fg2,
+                        fontSize   = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier
+                        modifier   = Modifier
                             .clickable { libraryViewModel.selectTab(tab) }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                     )
                 }
             }
 
-            // ── Search bar ────────────────────────────────────
             Row(
-                modifier = Modifier
+                modifier          = Modifier
                     .fillMaxWidth()
                     .background(theme.bg)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -135,21 +120,21 @@ fun LibraryScreen(
             ) {
                 Text("⌕", color = theme.fg2, fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
                 BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
+                    value          = searchQuery,
+                    onValueChange  = { searchQuery = it },
+                    singleLine     = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = theme.fg,
-                        fontSize = 12.sp,
+                    textStyle      = androidx.compose.ui.text.TextStyle(
+                        color      = theme.fg,
+                        fontSize   = 12.sp,
                         fontFamily = FontFamily.Monospace,
                     ),
-                    decorationBox = { inner ->
+                    decorationBox  = { inner ->
                         Box {
                             if (searchQuery.isEmpty()) Text(
                                 "search…",
-                                color = theme.fg2.copy(alpha = 0.4f),
-                                fontSize = 12.sp,
+                                color      = theme.fg2.copy(alpha = 0.4f),
+                                fontSize   = 12.sp,
                                 fontFamily = FontFamily.Monospace,
                             )
                             inner()
@@ -159,25 +144,18 @@ fun LibraryScreen(
                 )
                 if (searchQuery.isNotEmpty()) {
                     Text(
-                        "✕",
-                        color = theme.fg2,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .clickable { searchQuery = "" }
-                            .padding(start = 6.dp),
+                        "✕", color = theme.fg2, fontSize = 12.sp,
+                        modifier = Modifier.clickable { searchQuery = "" }.padding(start = 6.dp),
                     )
                 }
             }
         }
 
-        // ── Content ───────────────────────────────────────────
+        // ── Content ──────────────────────────────────────────
         Box(modifier = Modifier.weight(1f)) {
             when {
                 uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        color = theme.accent,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
+                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.align(Alignment.Center))
                 }
                 uiState.selectedAlbum != null -> {
                     AlbumTrackList(
@@ -186,32 +164,32 @@ fun LibraryScreen(
                         theme  = theme,
                         onTrackClick = { idx ->
                             playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
-                            onNavigateBack()
+                            onNavigateToPlayer()
                         },
                     )
                 }
-                uiState.selectedArtist != null && uiState.selectedAlbum == null -> {
+                uiState.selectedArtist != null -> {
                     AlbumGrid(
-                        albums = uiState.selectedArtistAlbums,
-                        theme  = theme,
+                        albums       = uiState.selectedArtistAlbums,
+                        theme        = theme,
                         onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
                     )
                 }
                 uiState.selectedPlaylist != null -> {
                     PlaylistTrackList(
-                        playlist = uiState.selectedPlaylist!!,
-                        tracks   = uiState.selectedPlaylistTracks,
-                        theme    = theme,
+                        playlist     = uiState.selectedPlaylist!!,
+                        tracks       = uiState.selectedPlaylistTracks,
+                        theme        = theme,
                         onTrackClick = { idx ->
                             playerViewModel.playTracks(uiState.selectedPlaylistTracks, idx)
-                            onNavigateBack()
+                            onNavigateToPlayer()
                         },
                     )
                 }
                 uiState.tab is LibraryTab.Albums -> {
                     AlbumGrid(
-                        albums = filteredAlbums,
-                        theme  = theme,
+                        albums       = filteredAlbums,
+                        theme        = theme,
                         onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
                     )
                 }
@@ -219,7 +197,7 @@ fun LibraryScreen(
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(filteredArtists) { artist ->
                             Row(
-                                modifier = Modifier
+                                modifier          = Modifier
                                     .fillMaxWidth()
                                     .clickable { libraryViewModel.loadArtistAlbums(artist) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -230,6 +208,32 @@ fun LibraryScreen(
                                     Text(artist.name, color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                                     Text("${artist.albumCount} albums", color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                 }
+                            }
+                            Divider(color = theme.border, thickness = 0.5.dp)
+                        }
+                    }
+                }
+                uiState.tab is LibraryTab.Tracks -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(filteredTracks.withIndex().toList()) { (idx, track) ->
+                            Row(
+                                modifier          = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        playerViewModel.playTracks(filteredTracks, idx)
+                                        onNavigateToPlayer()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                Text(
+                                    text = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
+                                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                )
                             }
                             Divider(color = theme.border, thickness = 0.5.dp)
                         }
@@ -257,20 +261,8 @@ fun LibraryScreen(
                 else -> {}
             }
         }
-
-        // ── Mini Player Bar ───────────────────────────────────
-        MiniPlayerBar(
-            playerState = playerState,
-            theme       = theme,
-            coverArtUrl = null,  // TODO: wire up cover art URL from repo
-            onTap       = onNavigateBack,
-            onPlayPause = { playerViewModel.togglePlayPause() },
-            onNext      = { playerViewModel.next() },
-        )
     }
 }
-
-// ─── Album grid ───────────────────────────────────────────────
 
 @Composable
 private fun AlbumGrid(
@@ -279,11 +271,11 @@ private fun AlbumGrid(
     onAlbumClick: (Album) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns             = GridCells.Fixed(2),
-        contentPadding      = PaddingValues(10.dp),
+        columns               = GridCells.Fixed(2),
+        contentPadding        = PaddingValues(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement   = Arrangement.spacedBy(8.dp),
-        modifier            = Modifier.fillMaxSize(),
+        modifier              = Modifier.fillMaxSize(),
     ) {
         items(albums) { album ->
             Column(
@@ -318,8 +310,6 @@ private fun AlbumGrid(
     }
 }
 
-// ─── Playlist track list ──────────────────────────────────────
-
 @Composable
 private fun PlaylistTrackList(
     playlist: com.droidamp.domain.model.Playlist,
@@ -329,14 +319,8 @@ private fun PlaylistTrackList(
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface),
-                    contentAlignment = Alignment.Center,
-                ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface), contentAlignment = Alignment.Center) {
                     Text("≡", color = theme.accent, fontSize = 28.sp)
                 }
                 Spacer(Modifier.width(12.dp))
@@ -350,34 +334,20 @@ private fun PlaylistTrackList(
         }
         items(tracks.withIndex().toList()) { (idx, track) ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onTrackClick(idx) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                modifier          = Modifier.fillMaxWidth().clickable { onTrackClick(idx) }.padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "%02d".format(idx + 1),
-                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.width(24.dp),
-                )
+                Text("%02d".format(idx + 1), color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(24.dp))
                 Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text(
-                    text = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
-                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                )
+                Text("%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000), color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             }
             Divider(color = theme.border, thickness = 0.5.dp)
         }
     }
 }
-
-// ─── Album track list ─────────────────────────────────────────
 
 @Composable
 private fun AlbumTrackList(
@@ -387,10 +357,7 @@ private fun AlbumTrackList(
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface)) {
                     if (album.coverArtId != null) AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
                     else Text("♫", color = theme.accent, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center))
@@ -406,26 +373,18 @@ private fun AlbumTrackList(
         }
         items(tracks.withIndex().toList()) { (idx, track) ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onTrackClick(idx) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                modifier          = Modifier.fillMaxWidth().clickable { onTrackClick(idx) }.padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
-                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.width(24.dp),
+                    if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
+                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(24.dp),
                 )
                 Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                 }
-                Text(
-                    text = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
-                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                )
+                Text("%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000), color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
             }
             Divider(color = theme.border, thickness = 0.5.dp)
         }

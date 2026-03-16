@@ -20,18 +20,15 @@ import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.DroidThemes
 
 @Composable
-fun SettingsScreen(
-    viewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit,
-) {
+fun SettingsScreen(viewModel: SettingsViewModel) {
     val theme = DroidThemes.Catppuccin
 
-    val url      by viewModel.url.collectAsState()
-    val username by viewModel.username.collectAsState()
-    val password by viewModel.password.collectAsState()
+    val url        by viewModel.url.collectAsState()
+    val username   by viewModel.username.collectAsState()
+    val password   by viewModel.password.collectAsState()
+    val pingStatus by viewModel.pingStatus.collectAsState()
 
     var showPassword by remember { mutableStateOf(false) }
-    var saved        by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -47,14 +44,6 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text       = "←",
-                color      = theme.accent,
-                fontSize   = 18.sp,
-                modifier   = Modifier
-                    .clickable(onClick = onNavigateBack)
-                    .padding(end = 12.dp),
-            )
-            Text(
                 text       = "SETTINGS",
                 color      = theme.accent,
                 fontSize   = 14.sp,
@@ -65,7 +54,7 @@ fun SettingsScreen(
         }
 
         Column(
-            modifier = Modifier
+            modifier            = Modifier
                 .fillMaxWidth()
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -73,7 +62,7 @@ fun SettingsScreen(
             Label("SERVER URL", theme)
             SettingsTextField(
                 value       = url,
-                onValue     = { viewModel.setUrl(it); saved = false },
+                onValue     = { viewModel.setUrl(it) },
                 placeholder = "http://192.168.1.x:4533",
                 theme       = theme,
                 keyboard    = KeyboardType.Uri,
@@ -82,27 +71,24 @@ fun SettingsScreen(
             Label("USERNAME", theme)
             SettingsTextField(
                 value       = username,
-                onValue     = { viewModel.setUsername(it); saved = false },
+                onValue     = { viewModel.setUsername(it) },
                 placeholder = "admin",
                 theme       = theme,
             )
 
             Label("PASSWORD", theme)
             SettingsTextField(
-                value       = password,
-                onValue     = { viewModel.setPassword(it); saved = false },
+                value    = password,
+                onValue  = { viewModel.setPassword(it) },
                 placeholder = "••••••••",
-                theme       = theme,
-                keyboard    = KeyboardType.Password,
-                visual      = if (showPassword) VisualTransformation.None
-                              else PasswordVisualTransformation(),
-                trailing    = {
+                theme    = theme,
+                keyboard = KeyboardType.Password,
+                visual   = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailing = {
                     Text(
                         text     = if (showPassword) "🙈" else "👁",
                         fontSize = 14.sp,
-                        modifier = Modifier
-                            .clickable { showPassword = !showPassword }
-                            .padding(4.dp),
+                        modifier = Modifier.clickable { showPassword = !showPassword }.padding(4.dp),
                     )
                 },
             )
@@ -113,23 +99,29 @@ fun SettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        if (saved) theme.green.copy(alpha = 0.15f) else theme.accent.copy(alpha = 0.15f),
-                        RoundedCornerShape(6.dp),
-                    )
-                    .clickable {
-                        viewModel.save()
-                        saved = true
-                    }
+                    .background(theme.accent.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                    .clickable { viewModel.save() }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text       = if (saved) "✓ SAVED" else "SAVE",
-                    color      = if (saved) theme.green else theme.accent,
+                    text       = "SAVE",
+                    color      = theme.accent,
                     fontSize   = 13.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
+                )
+            }
+
+            // Ping status
+            pingStatus?.let { status ->
+                val isOk = status.startsWith("✓")
+                Text(
+                    text       = status,
+                    color      = if (isOk) theme.green else if (status == "connecting…") theme.fg2 else theme.red,
+                    fontSize   = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier   = Modifier.align(Alignment.CenterHorizontally),
                 )
             }
         }
@@ -138,12 +130,7 @@ fun SettingsScreen(
 
 @Composable
 private fun Label(text: String, theme: DroidTheme) {
-    Text(
-        text       = text,
-        color      = theme.fg2,
-        fontSize   = 9.sp,
-        fontFamily = FontFamily.Monospace,
-    )
+    Text(text = text, color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
 }
 
 @Composable
@@ -161,19 +148,18 @@ private fun SettingsTextField(
         onValueChange = onValue,
         modifier      = Modifier.fillMaxWidth(),
         placeholder   = {
-            Text(placeholder, color = theme.fg2.copy(alpha = 0.4f),
-                fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(placeholder, color = theme.fg2.copy(alpha = 0.4f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         },
         textStyle = androidx.compose.ui.text.TextStyle(
             color      = theme.fg,
             fontSize   = 12.sp,
             fontFamily = FontFamily.Monospace,
         ),
-        singleLine            = true,
-        keyboardOptions       = KeyboardOptions(keyboardType = keyboard),
-        visualTransformation  = visual,
-        trailingIcon          = trailing,
-        colors = OutlinedTextFieldDefaults.colors(
+        singleLine           = true,
+        keyboardOptions      = KeyboardOptions(keyboardType = keyboard),
+        visualTransformation = visual,
+        trailingIcon         = trailing,
+        colors               = OutlinedTextFieldDefaults.colors(
             focusedBorderColor   = theme.accent,
             unfocusedBorderColor = theme.fg2.copy(alpha = 0.3f),
             cursorColor          = theme.accent,

@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,32 +27,14 @@ import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.visualizer.VisualizerCanvas
 import com.droidamp.ui.visualizer.VisualizerMode
 
-// ─────────────────────────────────────────────────────────────
-//  PlayerScreen — the main now-playing view.
-//
-//  Layout (top → bottom):
-//  1. Header bar (logo + library nav)
-//  2. Visualizer — 140dp tall, full-screen mode available
-//  3. Album art + track info
-//  4. Seek bar
-//  5. Transport controls (prev / play-pause / next)
-//  6. Secondary controls (shuffle, repeat, volume, viz mode)
-//  7. Source + format badge
-//  8. Theme switcher strip (17 themes)
-// ─────────────────────────────────────────────────────────────
-
 @Composable
-fun PlayerScreen(
-    viewModel: PlayerViewModel,
-    onNavigateToLibrary: () -> Unit,
-    onNavigateToSettings: () -> Unit,
-) {
+fun PlayerScreen(viewModel: PlayerViewModel) {
     val playerState by viewModel.playerState.collectAsState()
     val fftData     by viewModel.fftData.collectAsState()
     val vizMode     by viewModel.vizMode.collectAsState()
     val vizFull     by viewModel.isVizFullScreen.collectAsState()
 
-    var currentTheme by remember { mutableStateOf(DroidThemes.Catppuccin) }
+    var currentTheme    by remember { mutableStateOf(DroidThemes.Catppuccin) }
     var showThemePicker by remember { mutableStateOf(false) }
 
     val track = playerState.currentTrack
@@ -63,21 +44,14 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(currentTheme.bg)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 8.dp),
-        ) {
-            // ── Header bar ────────────────────────────────────
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ── Header ────────────────────────────────────────
             PlayerHeader(
-                theme = currentTheme,
-                onLibraryClick  = onNavigateToLibrary,
-                onThemeClick    = { showThemePicker = !showThemePicker },
-                onSettingsClick = onNavigateToSettings,
+                theme        = currentTheme,
+                onThemeClick = { showThemePicker = !showThemePicker },
             )
 
             // ── Visualizer ────────────────────────────────────
-            val vizHeight = if (vizFull) 0.dp else 100.dp
             if (!vizFull) {
                 Box(
                     modifier = Modifier
@@ -95,7 +69,6 @@ fun PlayerScreen(
                         onSwipeNext     = { viewModel.nextVizMode() },
                         onSwipePrev     = { viewModel.prevVizMode() },
                     )
-                    // Viz mode label
                     Text(
                         text       = vizMode.label,
                         color      = currentTheme.fg2,
@@ -107,7 +80,6 @@ fun PlayerScreen(
                             .background(currentTheme.bg.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
                             .padding(horizontal = 5.dp, vertical = 2.dp),
                     )
-                    // Full-screen toggle
                     Text(
                         text     = "⛶",
                         color    = currentTheme.fg2,
@@ -125,35 +97,33 @@ fun PlayerScreen(
             Column(
                 modifier            = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Album art
                 Box(
                     modifier = Modifier
-                        .size(150.dp)
+                        .size(180.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(currentTheme.surface)
                 ) {
                     if (track?.coverArtId != null) {
                         AsyncImage(
-                            model = track.coverArtId, // full URL built by repo
+                            model              = track.coverArtId,
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier           = Modifier.fillMaxSize(),
                         )
                     } else {
                         Text(
                             text     = "♫",
                             color    = currentTheme.accent,
-                            fontSize = 48.sp,
+                            fontSize = 56.sp,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
 
-                // Track title
                 Text(
                     text       = track?.title ?: "No track loaded",
                     color      = currentTheme.fg,
@@ -182,7 +152,6 @@ fun PlayerScreen(
                     overflow   = TextOverflow.Ellipsis,
                 )
 
-                // Source + format badge
                 if (track != null) {
                     Spacer(Modifier.height(5.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -192,7 +161,7 @@ fun PlayerScreen(
                 }
             }
 
-            // ── Seek bar ─────────────────────────────────────
+            // ── Seek bar ──────────────────────────────────────
             SeekBar(
                 position   = playerState.positionMs,
                 duration   = playerState.durationMs,
@@ -205,9 +174,9 @@ fun PlayerScreen(
                     .padding(horizontal = 20.dp),
             )
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
 
-            // ── Transport controls ────────────────────────────
+            // ── Transport controls ─────────────────────────────
             TransportControls(
                 playerState = playerState,
                 theme       = currentTheme,
@@ -216,18 +185,6 @@ fun PlayerScreen(
                 onNext      = { viewModel.next() },
                 onRepeat    = { viewModel.toggleRepeat() },
                 onShuffle   = { viewModel.toggleShuffle() },
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            // ── Volume slider ─────────────────────────────────
-            VolumeRow(
-                volume    = playerState.volume,
-                theme     = currentTheme,
-                onVolume  = { viewModel.setVolume(it) },
-                modifier  = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
             )
 
             Spacer(Modifier.weight(1f))
@@ -240,7 +197,7 @@ fun PlayerScreen(
             )
         }
 
-        // ── Full-screen visualizer overlay ────────────────────
+        // ── Full-screen visualizer overlay ─────────────────────
         if (vizFull) {
             Box(
                 modifier = Modifier
@@ -280,16 +237,14 @@ fun PlayerScreen(
     }
 }
 
-// ─── Sub-components ───────────────────────────────────────────
-
 @Composable
-private fun PlayerHeader(theme: DroidTheme, onLibraryClick: () -> Unit, onThemeClick: () -> Unit, onSettingsClick: () -> Unit) {
+private fun PlayerHeader(theme: DroidTheme, onThemeClick: () -> Unit) {
     Row(
-        modifier            = Modifier
+        modifier          = Modifier
             .fillMaxWidth()
             .background(theme.panel)
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment   = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text       = "DROIDAMP",
@@ -299,9 +254,7 @@ private fun PlayerHeader(theme: DroidTheme, onLibraryClick: () -> Unit, onThemeC
             fontFamily = FontFamily.Monospace,
             modifier   = Modifier.weight(1f),
         )
-        Text("☰", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onLibraryClick).padding(8.dp))
         Text("◑", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onThemeClick).padding(8.dp))
-        Text("⚙", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onSettingsClick).padding(8.dp))
     }
 }
 
@@ -329,12 +282,12 @@ private fun SeekBar(
     val progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Column(modifier = modifier) {
         Slider(
-            value = progress,
+            value         = progress,
             onValueChange = { onSeek((it * duration).toLong()) },
-            colors = SliderDefaults.colors(
-                thumbColor            = accent,
-                activeTrackColor      = accent,
-                inactiveTrackColor    = trackColor,
+            colors        = SliderDefaults.colors(
+                thumbColor         = accent,
+                activeTrackColor   = accent,
+                inactiveTrackColor = trackColor,
             ),
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -356,20 +309,15 @@ private fun TransportControls(
     onRepeat: () -> Unit, onShuffle: () -> Unit,
 ) {
     Row(
-        modifier            = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
-        // Shuffle
         val shuffleColor = if (playerState.isShuffled) theme.accent else theme.fg2
         Text("⇌", color = shuffleColor, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onShuffle))
-
-        // Prev
         Text("⏮", color = theme.fg, fontSize = 24.sp, modifier = Modifier.clickable(onClick = onPrev))
-
-        // Play / Pause — larger, accented
         Box(
             modifier = Modifier
                 .size(56.dp)
@@ -384,39 +332,12 @@ private fun TransportControls(
                 fontSize = 26.sp,
             )
         }
-
-        // Next
         Text("⏭", color = theme.fg, fontSize = 24.sp, modifier = Modifier.clickable(onClick = onNext))
-
-        // Repeat
         val repeatIcon = when (playerState.repeatMode) {
-            RepeatMode.OFF -> "↻"
-            RepeatMode.ALL -> "🔁"
-            RepeatMode.ONE -> "🔂"
+            RepeatMode.OFF -> "↻"; RepeatMode.ALL -> "🔁"; RepeatMode.ONE -> "🔂"
         }
         val repeatColor = if (playerState.repeatMode != RepeatMode.OFF) theme.accent else theme.fg2
         Text(repeatIcon, color = repeatColor, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onRepeat))
-    }
-}
-
-@Composable
-private fun VolumeRow(
-    volume: Float, theme: DroidTheme,
-    onVolume: (Float) -> Unit, modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text("🔈", color = theme.fg2, fontSize = 12.sp)
-        Slider(
-            value           = volume,
-            onValueChange   = onVolume,
-            modifier        = Modifier.weight(1f).padding(horizontal = 6.dp),
-            colors          = SliderDefaults.colors(
-                thumbColor         = theme.volBar,
-                activeTrackColor   = theme.volBar,
-                inactiveTrackColor = theme.surface,
-            ),
-        )
-        Text("🔊", color = theme.fg2, fontSize = 12.sp)
     }
 }
 
@@ -427,18 +348,18 @@ private fun ThemeStrip(
     onTheme: (DroidTheme) -> Unit,
 ) {
     LazyRow(
-        modifier            = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .background(currentTheme.panel)
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding       = PaddingValues(horizontal = 12.dp),
+        contentPadding        = PaddingValues(horizontal = 12.dp),
     ) {
         items(themes) { theme ->
             val isActive = theme.id == currentTheme.id
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onTheme(theme) },
+                modifier            = Modifier.clickable { onTheme(theme) },
             ) {
                 Box(
                     modifier = Modifier

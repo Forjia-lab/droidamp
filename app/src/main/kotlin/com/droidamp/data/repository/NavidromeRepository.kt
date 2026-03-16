@@ -16,6 +16,12 @@ import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class SearchResults(
+    val artists: List<Artist> = emptyList(),
+    val albums: List<Album> = emptyList(),
+    val tracks: List<Track> = emptyList(),
+)
+
 @Singleton
 class NavidromeRepository @Inject constructor(
     private val api: SubsonicApiService,
@@ -74,6 +80,24 @@ class NavidromeRepository @Inject constructor(
     fun getPlaylistTracks(playlistId: String): Flow<Result<List<Track>>> = flow {
         emit(runCatching {
             api.getPlaylist(playlistId).subsonic_response?.playlist?.entry
+                ?.map { it.toTrack(null, ::buildCoverArtUrl, ::buildStreamUrl) } ?: emptyList()
+        })
+    }
+
+    fun search(query: String): Flow<Result<SearchResults>> = flow {
+        emit(runCatching {
+            val r = api.search(query).subsonic_response?.searchResult3
+            SearchResults(
+                artists = r?.artist?.map { it.toArtist(::buildCoverArtUrl) } ?: emptyList(),
+                albums  = r?.album?.map  { it.toAlbum(::buildCoverArtUrl) }  ?: emptyList(),
+                tracks  = r?.song?.map   { it.toTrack(null, ::buildCoverArtUrl, ::buildStreamUrl) } ?: emptyList(),
+            )
+        })
+    }
+
+    fun getRandomTracks(count: Int = 200): Flow<Result<List<Track>>> = flow {
+        emit(runCatching {
+            api.getRandomSongs(count).subsonic_response?.randomSongs?.song
                 ?.map { it.toTrack(null, ::buildCoverArtUrl, ::buildStreamUrl) } ?: emptyList()
         })
     }
