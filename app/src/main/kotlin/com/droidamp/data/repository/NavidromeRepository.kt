@@ -37,22 +37,22 @@ class NavidromeRepository @Inject constructor(
         emit(runCatching {
             api.getArtists().subsonic_response?.artists?.index
                 ?.flatMap { it.artist }
-                ?.map { it.toArtist() } ?: emptyList()
+                ?.map { it.toArtist(::buildCoverArtUrl) } ?: emptyList()
         })
     }
 
     fun getAllAlbums(): Flow<Result<List<Album>>> = flow {
         emit(runCatching {
             api.getAlbumList().subsonic_response?.albumList2?.album
-                ?.map { it.toAlbum() } ?: emptyList()
+                ?.map { it.toAlbum(::buildCoverArtUrl) } ?: emptyList()
         })
     }
 
     fun getAlbumTracks(albumId: String): Flow<Result<List<Track>>> = flow {
         emit(runCatching {
             val albumResult = api.getAlbum(albumId).subsonic_response?.album
-            val coverArtUrl = albumResult?.coverArt?.let { buildCoverArtUrl(it) }
-            albumResult?.song?.map { it.toTrack(coverArtUrl, serverUrlProvider.baseUrl()) }
+            val fallbackArtUrl = albumResult?.coverArt?.let { buildCoverArtUrl(it) }
+            albumResult?.song?.map { it.toTrack(fallbackArtUrl, ::buildCoverArtUrl, ::buildStreamUrl) }
                 ?: emptyList()
         })
     }
@@ -67,47 +67,47 @@ class NavidromeRepository @Inject constructor(
     fun getPlaylistTracks(playlistId: String): Flow<Result<List<Track>>> = flow {
         emit(runCatching {
             api.getPlaylist(playlistId).subsonic_response?.playlist?.entry
-                ?.map { it.toTrack(null, serverUrlProvider.baseUrl()) } ?: emptyList()
+                ?.map { it.toTrack(null, ::buildCoverArtUrl, ::buildStreamUrl) } ?: emptyList()
         })
     }
 }
 
-private fun ApiArtist.toArtist() = Artist(
+private fun ApiArtist.toArtist(artUrl: (String) -> String) = Artist(
     id = id,
     name = name,
     albumCount = albumCount,
-    coverArtId = coverArt,
+    coverArtId = coverArt?.let { artUrl(it) },
 )
 
-private fun ApiAlbum.toAlbum() = Album(
+private fun ApiAlbum.toAlbum(artUrl: (String) -> String) = Album(
     id = id,
     name = name,
     artist = artist,
     artistId = artistId,
     year = year,
     trackCount = songCount,
-    coverArtId = coverArt,
+    coverArtId = coverArt?.let { artUrl(it) },
 )
 
-private fun ApiSong.toTrack(coverArtUrl: String?, baseUrl: String): Track {
-    val artUrl = coverArt?.let { "$baseUrl/rest/getCoverArt.view?id=$it&v=1.16.1&c=droidamp&size=300" }
-        ?: coverArtUrl
-    return Track(
-        id = id,
-        title = title,
-        artist = artist,
-        album = album,
-        albumId = albumId,
-        duration = duration.toLong() * 1000L,
-        trackNumber = track,
-        year = year,
-        size = size,
-        suffix = suffix,
-        coverArtId = artUrl,
-        streamUrl = "$baseUrl/rest/stream.view?id=$id&v=1.16.1&c=droidamp",
-        source = TrackSource.NAVIDROME,
-    )
-}
+private fun ApiSong.toTrack(
+    fallbackArtUrl: String?,
+    artUrl: (String) -> String,
+    streamUrl: (String) -> String,
+): Track = Track(
+    id = id,
+    title = title,
+    artist = artist,
+    album = album,
+    albumId = albumId,
+    duration = duration.toLong() * 1000L,
+    trackNumber = track,
+    year = year,
+    size = size,
+    suffix = suffix,
+    coverArtId = coverArt?.let { artUrl(it) } ?: fallbackArtUrl,
+    streamUrl = streamUrl(id),
+    source = TrackSource.NAVIDROME,
+)
 
 private fun ApiPlaylist.toPlaylist() = Playlist(
     id = id,

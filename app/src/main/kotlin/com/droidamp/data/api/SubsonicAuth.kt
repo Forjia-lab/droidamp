@@ -10,8 +10,8 @@ import javax.inject.Singleton
 @Singleton
 class ServerUrlProvider @Inject constructor() {
     private var _baseUrl: String = "http://100.122.7.119:4533"
-    private var _username: String = "admin"
-    private var _password: String = "admin"
+    private var _username: String = "techbrooo"
+    private var _password: String = "w!iE80EgCv&3*KiBBcy4n3&J"
 
     fun baseUrl() = _baseUrl
     fun username() = _username

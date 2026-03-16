@@ -1,5 +1,6 @@
 package com.droidamp.data.api
 
+import com.google.gson.annotations.SerializedName
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -87,6 +88,7 @@ interface SubsonicApiService {
 // ─── Response wrappers ───────────────────────────────────────
 
 data class SubsonicResponse<T>(
+    @SerializedName("subsonic-response")
     val subsonic_response: SubsonicWrapper<T>? = null
 )
 
