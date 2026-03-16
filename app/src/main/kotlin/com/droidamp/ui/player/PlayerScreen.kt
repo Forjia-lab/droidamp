@@ -5,15 +5,12 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,7 +27,6 @@ import coil.compose.AsyncImage
 import com.droidamp.domain.model.PlayerState
 import com.droidamp.domain.model.RepeatMode
 import com.droidamp.ui.theme.DroidTheme
-import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
 import com.droidamp.ui.visualizer.VisualizerCanvas
 
@@ -60,13 +56,6 @@ fun PlayerScreen(
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
-    }
-
-    // Auto-scroll theme strip to the active swatch whenever theme changes
-    val themeStripState  = rememberLazyListState()
-    val activeThemeIndex = DroidThemes.all.indexOfFirst { it.id == theme.id }.coerceAtLeast(0)
-    LaunchedEffect(theme.id) {
-        themeStripState.animateScrollToItem(activeThemeIndex)
     }
 
     val track = playerState.currentTrack
@@ -270,13 +259,6 @@ fun PlayerScreen(
             )
 
             Spacer(Modifier.weight(1f))
-
-            // ── Theme strip ───────────────────────────────────
-            ThemeStrip(
-                activeTheme   = theme,
-                listState     = themeStripState,
-                onSelectTheme = { themeViewModel.setTheme(it) },
-            )
         }
 
         // ── Full-screen visualizer overlay ─────────────────────
@@ -315,70 +297,8 @@ fun PlayerScreen(
     }
 }
 
-// ─── Theme strip ─────────────────────────────────────────────
-@Composable
-private fun ThemeStrip(
-    activeTheme: DroidTheme,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    onSelectTheme: (DroidTheme) -> Unit,
-) {
-    LazyRow(
-        state                 = listState,
-        modifier              = Modifier
-            .fillMaxWidth()
-            .background(activeTheme.panel)
-            .padding(vertical = 8.dp),
-        contentPadding        = PaddingValues(horizontal = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(DroidThemes.all) { t ->
-            val isActive = t.id == activeTheme.id
-            Column(
-                modifier            = Modifier
-                    .width(52.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(t.bg)
-                    .then(
-                        if (isActive)
-                            Modifier.border(1.5.dp, t.accent, RoundedCornerShape(5.dp))
-                        else
-                            Modifier
-                    )
-                    .clickable { onSelectTheme(t) }
-                    .padding(5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Row(
-                    modifier              = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(1.dp),
-                ) {
-                    listOf(t.accent, t.green, t.yellow, t.red).forEach { c ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(c, RoundedCornerShape(1.dp)),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text       = t.displayName,
-                    color      = t.fg,
-                    fontSize   = 6.sp,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign  = TextAlign.Center,
-                    maxLines   = 2,
-                    overflow   = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
 // ─── Seek bar ─────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeekBar(
     position: Long, duration: Long,
@@ -398,6 +318,14 @@ private fun SeekBar(
                 activeTrackColor   = accent,
                 inactiveTrackColor = trackColor,
             ),
+            thumb = {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(accent),
+                )
+            },
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(msToTime(position), color = textColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
@@ -441,9 +369,10 @@ private fun TransportControls(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text     = if (playerState.isPlaying) "⏸" else "▶",
-                color    = theme.accent,
-                fontSize = 26.sp,
+                text       = if (playerState.isPlaying) "⏸" else "▶",
+                color      = theme.accent,
+                fontSize   = 26.sp,
+                fontFamily = FontFamily.Monospace,
             )
         }
 

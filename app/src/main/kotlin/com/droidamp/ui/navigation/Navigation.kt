@@ -32,7 +32,7 @@ sealed class Screen(val route: String, val label: String, val icon: String) {
     object Settings : Screen("settings", "Settings",    "⚙")
 }
 
-private val bottomNavScreens = listOf(Screen.Player, Screen.Library, Screen.Search, Screen.Settings)
+private val bottomNavScreens = listOf(Screen.Library, Screen.Search, Screen.Settings)
 
 @Composable
 fun DroidampNavGraph(
