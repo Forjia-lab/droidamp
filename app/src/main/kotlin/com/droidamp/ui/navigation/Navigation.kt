@@ -1,13 +1,12 @@
 package com.droidamp.ui.navigation
 
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
@@ -24,7 +23,7 @@ import com.droidamp.ui.search.SearchScreen
 import com.droidamp.ui.search.SearchViewModel
 import com.droidamp.ui.settings.SettingsScreen
 import com.droidamp.ui.settings.SettingsViewModel
-import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
 
 sealed class Screen(val route: String, val label: String, val icon: String) {
     object Player   : Screen("player",   "Now Playing", "🎵")
@@ -36,11 +35,15 @@ sealed class Screen(val route: String, val label: String, val icon: String) {
 private val bottomNavScreens = listOf(Screen.Player, Screen.Library, Screen.Search, Screen.Settings)
 
 @Composable
-fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerViewModel) {
+fun DroidampNavGraph(
+    navController: NavHostController,
+    playerViewModel: PlayerViewModel,
+    themeViewModel: ThemeViewModel,
+) {
     val playerState  by playerViewModel.playerState.collectAsState()
+    val theme        by themeViewModel.theme.collectAsState()
     val backEntry    by navController.currentBackStackEntryAsState()
     val currentRoute = backEntry?.destination?.route
-    val theme        = DroidThemes.Catppuccin
 
     fun navigateTo(route: String) {
         navController.navigate(route) {
@@ -54,7 +57,6 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
         containerColor = theme.bg,
         bottomBar = {
             Column {
-                // MiniPlayer above nav bar on non-player screens
                 if (currentRoute != Screen.Player.route) {
                     MiniPlayerBar(
                         playerState = playerState,
@@ -73,11 +75,7 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
                             onClick  = { navigateTo(screen.route) },
                             icon     = { Text(screen.icon, fontSize = 16.sp) },
                             label    = {
-                                Text(
-                                    screen.label,
-                                    fontSize   = 8.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
+                                Text(screen.label, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor   = theme.accent,
@@ -102,13 +100,19 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
             popExitTransition  = { fadeOut(tween(180)) },
         ) {
             composable(Screen.Player.route) {
-                PlayerScreen(viewModel = playerViewModel)
+                PlayerScreen(
+                    viewModel          = playerViewModel,
+                    themeViewModel     = themeViewModel,
+                    onNavigateToLibrary  = { navigateTo(Screen.Library.route) },
+                    onNavigateToSettings = { navigateTo(Screen.Settings.route) },
+                )
             }
             composable(Screen.Library.route) {
                 val libraryViewModel: LibraryViewModel = hiltViewModel()
                 LibraryScreen(
                     libraryViewModel   = libraryViewModel,
                     playerViewModel    = playerViewModel,
+                    themeViewModel     = themeViewModel,
                     onNavigateToPlayer = { navigateTo(Screen.Player.route) },
                 )
             }
@@ -117,12 +121,13 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
                 SearchScreen(
                     viewModel          = searchViewModel,
                     playerViewModel    = playerViewModel,
+                    themeViewModel     = themeViewModel,
                     onNavigateToPlayer = { navigateTo(Screen.Player.route) },
                 )
             }
             composable(Screen.Settings.route) {
                 val settingsViewModel: SettingsViewModel = hiltViewModel()
-                SettingsScreen(viewModel = settingsViewModel)
+                SettingsScreen(viewModel = settingsViewModel, themeViewModel = themeViewModel)
             }
         }
     }
