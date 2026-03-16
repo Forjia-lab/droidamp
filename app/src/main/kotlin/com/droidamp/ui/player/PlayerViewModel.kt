@@ -3,6 +3,7 @@ package com.droidamp.ui.player
 import android.content.ComponentName
 import android.content.Context
 import android.media.audiofx.Visualizer
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -171,11 +172,18 @@ class PlayerViewModel @Inject constructor(
 
     // ── Android Visualizer API / FFT ──────────────────────────
 
+    /** Called by PlayerScreen once RECORD_AUDIO is granted. */
+    fun onPermissionGranted() {
+        if (_playerState.value.isPlaying) attachVisualizer()
+    }
+
     private fun attachVisualizer() {
         detachVisualizer()
-        val audioSessionId = 0 // global output mix; MediaController doesn't expose session id
+        // Use the real ExoPlayer audio session if available; fall back to 0 (global output mix)
+        val sessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: 0
+        Log.d("Droidamp", "attachVisualizer: sessionId=$sessionId isPlaying=${_playerState.value.isPlaying}")
         try {
-            visualizer = Visualizer(audioSessionId).apply {
+            visualizer = Visualizer(sessionId).apply {
                 captureSize = Visualizer.getCaptureSizeRange()[1]
                 setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                     override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, sampleRate: Int) {}
@@ -185,8 +193,9 @@ class PlayerViewModel @Inject constructor(
                 }, Visualizer.getMaxCaptureRate() / 2, false, true)
                 enabled = true
             }
+            Log.d("Droidamp", "Visualizer attached successfully (sessionId=$sessionId)")
         } catch (e: Exception) {
-            // Visualizer requires RECORD_AUDIO; gracefully degrade if denied
+            Log.e("Droidamp", "Visualizer init failed (sessionId=$sessionId): ${e.javaClass.simpleName}: ${e.message}")
         }
     }
 

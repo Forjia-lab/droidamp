@@ -1,11 +1,12 @@
 package com.droidamp.ui.player
 
-import androidx.compose.animation.*
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -13,43 +14,68 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.droidamp.domain.model.PlayerState
 import com.droidamp.domain.model.RepeatMode
 import com.droidamp.ui.theme.DroidTheme
-import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
 import com.droidamp.ui.visualizer.VisualizerCanvas
-import com.droidamp.ui.visualizer.VisualizerMode
 
 @Composable
-fun PlayerScreen(viewModel: PlayerViewModel) {
+fun PlayerScreen(viewModel: PlayerViewModel, themeViewModel: ThemeViewModel) {
     val playerState by viewModel.playerState.collectAsState()
     val fftData     by viewModel.fftData.collectAsState()
     val vizMode     by viewModel.vizMode.collectAsState()
     val vizFull     by viewModel.isVizFullScreen.collectAsState()
+    val theme       by themeViewModel.theme.collectAsState()
 
-    var currentTheme    by remember { mutableStateOf(DroidThemes.Catppuccin) }
-    var showThemePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // Request RECORD_AUDIO — needed for android.media.audiofx.Visualizer.
+    // Re-runs whenever the screen enters composition (covers first launch and
+    // the case where the user previously denied and then returns to this screen).
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.onPermissionGranted()
+    }
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
+            viewModel.onPermissionGranted()
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     val track = playerState.currentTrack
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(currentTheme.bg)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(theme.bg)) {
         Column(modifier = Modifier.fillMaxSize()) {
             // ── Header ────────────────────────────────────────
-            PlayerHeader(
-                theme        = currentTheme,
-                onThemeClick = { showThemePicker = !showThemePicker },
-            )
+            Row(
+                modifier          = Modifier
+                    .fillMaxWidth()
+                    .background(theme.panel)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text       = "DROIDAMP",
+                    color      = theme.accent,
+                    fontSize   = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
 
             // ── Visualizer ────────────────────────────────────
             if (!vizFull) {
@@ -57,32 +83,32 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(100.dp)
-                        .background(currentTheme.panel)
+                        .background(theme.panel)
                 ) {
                     VisualizerCanvas(
                         fftData         = fftData,
                         mode            = vizMode,
-                        accentColor     = currentTheme.vizBar,
-                        secondaryColor  = currentTheme.red,
-                        backgroundColor = currentTheme.panel,
+                        accentColor     = theme.vizBar,
+                        secondaryColor  = theme.red,
+                        backgroundColor = theme.panel,
                         modifier        = Modifier.fillMaxSize(),
                         onSwipeNext     = { viewModel.nextVizMode() },
                         onSwipePrev     = { viewModel.prevVizMode() },
                     )
                     Text(
                         text       = vizMode.label,
-                        color      = currentTheme.fg2,
+                        color      = theme.fg2,
                         fontSize   = 8.sp,
                         fontFamily = FontFamily.Monospace,
                         modifier   = Modifier
                             .align(Alignment.TopEnd)
                             .padding(6.dp)
-                            .background(currentTheme.bg.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
+                            .background(theme.bg.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
                             .padding(horizontal = 5.dp, vertical = 2.dp),
                     )
                     Text(
                         text     = "⛶",
-                        color    = currentTheme.fg2,
+                        color    = theme.fg2,
                         fontSize = 12.sp,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -104,29 +130,18 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
                     modifier = Modifier
                         .size(180.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(currentTheme.surface)
+                        .background(theme.surface)
                 ) {
                     if (track?.coverArtId != null) {
-                        AsyncImage(
-                            model              = track.coverArtId,
-                            contentDescription = null,
-                            modifier           = Modifier.fillMaxSize(),
-                        )
+                        AsyncImage(model = track.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
                     } else {
-                        Text(
-                            text     = "♫",
-                            color    = currentTheme.accent,
-                            fontSize = 56.sp,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
+                        Text("♫", color = theme.accent, fontSize = 56.sp, modifier = Modifier.align(Alignment.Center))
                     }
                 }
-
                 Spacer(Modifier.height(10.dp))
-
                 Text(
                     text       = track?.title ?: "No track loaded",
-                    color      = currentTheme.fg,
+                    color      = theme.fg,
                     fontSize   = 15.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
@@ -137,27 +152,32 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text       = track?.artist ?: "",
-                    color      = currentTheme.fg2,
+                    color      = theme.fg2,
                     fontSize   = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     textAlign  = TextAlign.Center,
                 )
                 Text(
                     text       = track?.album ?: "",
-                    color      = currentTheme.fg2.copy(alpha = 0.6f),
+                    color      = theme.fg2.copy(alpha = 0.6f),
                     fontSize   = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     textAlign  = TextAlign.Center,
                     maxLines   = 1,
                     overflow   = TextOverflow.Ellipsis,
                 )
-
-                if (track != null) {
+                // Format badge only (no source badge)
+                if (track != null && track.suffix.isNotEmpty()) {
                     Spacer(Modifier.height(5.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Badge(text = track.source.name, color = currentTheme.green)
-                        if (track.suffix.isNotEmpty()) Badge(text = track.suffix.uppercase(), color = currentTheme.yellow)
-                    }
+                    Text(
+                        text       = track.suffix.uppercase(),
+                        color      = theme.yellow,
+                        fontSize   = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier   = Modifier
+                            .background(theme.yellow.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
                 }
             }
 
@@ -165,13 +185,11 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
             SeekBar(
                 position   = playerState.positionMs,
                 duration   = playerState.durationMs,
-                accent     = currentTheme.accent,
-                trackColor = currentTheme.surface,
-                textColor  = currentTheme.fg2,
+                accent     = theme.accent,
+                trackColor = theme.surface,
+                textColor  = theme.fg2,
                 onSeek     = { viewModel.seekTo(it) },
-                modifier   = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                modifier   = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             )
 
             Spacer(Modifier.height(6.dp))
@@ -179,7 +197,7 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
             // ── Transport controls ─────────────────────────────
             TransportControls(
                 playerState = playerState,
-                theme       = currentTheme,
+                theme       = theme,
                 onPrev      = { viewModel.prev() },
                 onPlayPause = { viewModel.togglePlayPause() },
                 onNext      = { viewModel.next() },
@@ -188,35 +206,24 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
             )
 
             Spacer(Modifier.weight(1f))
-
-            // ── Theme switcher strip ──────────────────────────
-            ThemeStrip(
-                themes       = DroidThemes.all,
-                currentTheme = currentTheme,
-                onTheme      = { currentTheme = it },
-            )
         }
 
         // ── Full-screen visualizer overlay ─────────────────────
         if (vizFull) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(currentTheme.bg)
-            ) {
+            Box(modifier = Modifier.fillMaxSize().background(theme.bg)) {
                 VisualizerCanvas(
                     fftData         = fftData,
                     mode            = vizMode,
-                    accentColor     = currentTheme.vizBar,
-                    secondaryColor  = currentTheme.red,
-                    backgroundColor = currentTheme.bg,
+                    accentColor     = theme.vizBar,
+                    secondaryColor  = theme.red,
+                    backgroundColor = theme.bg,
                     modifier        = Modifier.fillMaxSize(),
                     onSwipeNext     = { viewModel.nextVizMode() },
                     onSwipePrev     = { viewModel.prevVizMode() },
                 )
                 Text(
                     text     = "✕",
-                    color    = currentTheme.fg2,
+                    color    = theme.fg2,
                     fontSize = 18.sp,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -225,50 +232,14 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
                 )
                 Text(
                     text       = vizMode.label,
-                    color      = currentTheme.fg2,
+                    color      = theme.fg2,
                     fontSize   = 10.sp,
                     fontFamily = FontFamily.Monospace,
-                    modifier   = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(20.dp),
+                    modifier   = Modifier.align(Alignment.BottomCenter).padding(20.dp),
                 )
             }
         }
     }
-}
-
-@Composable
-private fun PlayerHeader(theme: DroidTheme, onThemeClick: () -> Unit) {
-    Row(
-        modifier          = Modifier
-            .fillMaxWidth()
-            .background(theme.panel)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text       = "DROIDAMP",
-            color      = theme.accent,
-            fontSize   = 14.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            modifier   = Modifier.weight(1f),
-        )
-        Text("◑", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onThemeClick).padding(8.dp))
-    }
-}
-
-@Composable
-private fun Badge(text: String, color: androidx.compose.ui.graphics.Color) {
-    Text(
-        text       = text,
-        color      = color,
-        fontSize   = 8.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier   = Modifier
-            .background(color.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    )
 }
 
 @Composable
@@ -309,9 +280,7 @@ private fun TransportControls(
     onRepeat: () -> Unit, onShuffle: () -> Unit,
 ) {
     Row(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+        modifier              = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
@@ -326,78 +295,11 @@ private fun TransportControls(
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text     = if (playerState.isPlaying) "⏸" else "▶",
-                color    = theme.accent,
-                fontSize = 26.sp,
-            )
+            Text(if (playerState.isPlaying) "⏸" else "▶", color = theme.accent, fontSize = 26.sp)
         }
         Text("⏭", color = theme.fg, fontSize = 24.sp, modifier = Modifier.clickable(onClick = onNext))
-        val repeatIcon = when (playerState.repeatMode) {
-            RepeatMode.OFF -> "↻"; RepeatMode.ALL -> "🔁"; RepeatMode.ONE -> "🔂"
-        }
+        val repeatIcon  = when (playerState.repeatMode) { RepeatMode.OFF -> "↻"; RepeatMode.ALL -> "🔁"; RepeatMode.ONE -> "🔂" }
         val repeatColor = if (playerState.repeatMode != RepeatMode.OFF) theme.accent else theme.fg2
         Text(repeatIcon, color = repeatColor, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onRepeat))
-    }
-}
-
-@Composable
-private fun ThemeStrip(
-    themes: List<DroidTheme>,
-    currentTheme: DroidTheme,
-    onTheme: (DroidTheme) -> Unit,
-) {
-    LazyRow(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .background(currentTheme.panel)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding        = PaddingValues(horizontal = 12.dp),
-    ) {
-        items(themes) { theme ->
-            val isActive = theme.id == currentTheme.id
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier            = Modifier.clickable { onTheme(theme) },
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(theme.bg)
-                        .then(
-                            if (isActive) Modifier.padding(1.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(theme.accent)
-                            else Modifier
-                        ),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(if (isActive) 16.dp else 20.dp)
-                            .align(Alignment.Center)
-                            .clip(RoundedCornerShape(if (isActive) 3.dp else 4.dp))
-                            .background(theme.bg),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .align(Alignment.Center)
-                                .clip(CircleShape)
-                                .background(theme.accent),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text       = theme.displayName.take(6),
-                    color      = if (isActive) currentTheme.accent else currentTheme.fg2,
-                    fontSize   = 6.sp,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign  = TextAlign.Center,
-                )
-            }
-        }
     }
 }

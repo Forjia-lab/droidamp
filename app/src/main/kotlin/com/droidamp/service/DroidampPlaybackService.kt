@@ -2,9 +2,11 @@ package com.droidamp.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.droidamp.ui.MainActivity
@@ -22,6 +24,12 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class DroidampPlaybackService : MediaSessionService() {
 
+    companion object {
+        /** Updated by AnalyticsListener once ExoPlayer assigns its AudioTrack session. */
+        @Volatile var audioSessionId: Int = 0
+            private set
+    }
+
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
@@ -37,6 +45,17 @@ class DroidampPlaybackService : MediaSessionService() {
             )
             .setHandleAudioBecomingNoisy(true)   // pause on headphone unplug
             .build()
+
+        // Capture the real ExoPlayer audio session ID so the Visualizer can attach to it
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioSessionIdChanged(
+                eventTime: AnalyticsListener.EventTime,
+                audioSessionId: Int,
+            ) {
+                DroidampPlaybackService.audioSessionId = audioSessionId
+                Log.d("Droidamp", "ExoPlayer audioSessionId → $audioSessionId")
+            }
+        })
 
         val sessionActivityIntent = PendingIntent.getActivity(
             this, 0,
