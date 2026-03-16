@@ -41,6 +41,13 @@ class NavidromeRepository @Inject constructor(
         })
     }
 
+    fun getArtistAlbums(artistId: String): Flow<Result<List<Album>>> = flow {
+        emit(runCatching {
+            api.getArtist(artistId).subsonic_response?.artist?.album
+                ?.map { it.toAlbum(::buildCoverArtUrl) } ?: emptyList()
+        })
+    }
+
     fun getAllAlbums(): Flow<Result<List<Album>>> = flow {
         emit(runCatching {
             api.getAlbumList().subsonic_response?.albumList2?.album

@@ -81,22 +81,25 @@ fun LibraryScreen(
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f),
             )
-            if (uiState.selectedAlbum != null || uiState.selectedPlaylist != null) {
+            if (uiState.selectedAlbum != null || uiState.selectedPlaylist != null || uiState.selectedArtist != null) {
                 Text(
                     text = "← Back",
                     color = theme.fg2,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.clickable {
-                        libraryViewModel.clearAlbumSelection()
-                        libraryViewModel.clearPlaylistSelection()
+                        when {
+                            uiState.selectedAlbum != null -> libraryViewModel.clearAlbumSelection()
+                            uiState.selectedPlaylist != null -> libraryViewModel.clearPlaylistSelection()
+                            else -> libraryViewModel.clearArtistSelection()
+                        }
                     },
                 )
             }
         }
 
         // ── Tab bar ───────────────────────────────────────────
-        if (uiState.selectedAlbum == null && uiState.selectedPlaylist == null) {
+        if (uiState.selectedAlbum == null && uiState.selectedPlaylist == null && uiState.selectedArtist == null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -187,6 +190,13 @@ fun LibraryScreen(
                         },
                     )
                 }
+                uiState.selectedArtist != null && uiState.selectedAlbum == null -> {
+                    AlbumGrid(
+                        albums = uiState.selectedArtistAlbums,
+                        theme  = theme,
+                        onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
+                    )
+                }
                 uiState.selectedPlaylist != null -> {
                     PlaylistTrackList(
                         playlist = uiState.selectedPlaylist!!,
@@ -211,7 +221,7 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { /* load artist albums */ }
+                                    .clickable { libraryViewModel.loadArtistAlbums(artist) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
