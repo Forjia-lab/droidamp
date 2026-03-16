@@ -231,7 +231,7 @@ class PlayerViewModel @Inject constructor(
         // smooth with previous frame, then scale up so low-level signals are visible
         val prev = _fftData.value
         val smoothed = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
-        val scaledFft = FloatArray(smoothed.size) { i -> (smoothed[i] * 4f).coerceAtMost(1f) }
+        val scaledFft = FloatArray(smoothed.size) { i -> (smoothed[i] * 2f).coerceAtMost(1f) }
         _fftData.value = scaledFft
     }
 

@@ -49,7 +49,7 @@ fun PlayerScreen(
 
     val context = LocalContext.current
 
-    // Request RECORD_AUDIO for the Visualizer; retry if previously denied
+    // Request RECORD_AUDIO for the Visualizer; retries if previously denied
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) viewModel.onPermissionGranted() }
@@ -62,8 +62,8 @@ fun PlayerScreen(
         }
     }
 
-    // Scroll theme strip to active swatch on theme change
-    val themeStripState = rememberLazyListState()
+    // Auto-scroll theme strip to the active swatch whenever theme changes
+    val themeStripState  = rememberLazyListState()
     val activeThemeIndex = DroidThemes.all.indexOfFirst { it.id == theme.id }.coerceAtLeast(0)
     LaunchedEffect(theme.id) {
         themeStripState.animateScrollToItem(activeThemeIndex)
@@ -74,7 +74,7 @@ fun PlayerScreen(
     Box(modifier = Modifier.fillMaxSize().background(theme.bg)) {
         Column(modifier = Modifier.fillMaxSize()) {
 
-            // ── 1. Header ──────────────────────────────────────
+            // ── Header ────────────────────────────────────────
             Row(
                 modifier          = Modifier
                     .fillMaxWidth()
@@ -90,16 +90,19 @@ fun PlayerScreen(
                     fontFamily = FontFamily.Monospace,
                     modifier   = Modifier.weight(1f),
                 )
+                // Library shortcut
                 Text(
-                    text     = "📚",
+                    text     = "♫",
+                    color    = theme.fg2,
                     fontSize = 16.sp,
                     modifier = Modifier
                         .clickable { onNavigateToLibrary() }
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                 )
+                // Settings / theme shortcut
                 Text(
-                    text     = "◑",
-                    color    = theme.accent,
+                    text     = "✑",
+                    color    = theme.fg2,
                     fontSize = 16.sp,
                     modifier = Modifier
                         .clickable { onNavigateToSettings() }
@@ -107,7 +110,7 @@ fun PlayerScreen(
                 )
             }
 
-            // ── 2. Visualizer (140 dp) ─────────────────────────
+            // ── Visualizer — 140 dp ───────────────────────────
             if (!vizFull) {
                 Box(
                     modifier = Modifier
@@ -151,16 +154,16 @@ fun PlayerScreen(
                 }
             }
 
-            // ── 3. Album art + track info ──────────────────────
+            // ── Album art + track info ─────────────────────────
             Column(
                 modifier            = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Album art — 180 dp square
+                // Album art — 180 dp square, 8 dp rounded corners
                 Box(
-                    modifier = Modifier
+                    modifier         = Modifier
                         .size(180.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(theme.surface),
@@ -179,7 +182,7 @@ fun PlayerScreen(
 
                 Spacer(Modifier.height(10.dp))
 
-                // Title
+                // Track title — bold, fg
                 Text(
                     text       = track?.title ?: "No track loaded",
                     color      = theme.fg,
@@ -192,7 +195,7 @@ fun PlayerScreen(
                 )
                 Spacer(Modifier.height(3.dp))
 
-                // Artist — accent color per spec
+                // Artist — accent color
                 Text(
                     text       = track?.artist ?: "",
                     color      = theme.accent,
@@ -203,10 +206,10 @@ fun PlayerScreen(
                     overflow   = TextOverflow.Ellipsis,
                 )
 
-                // Album — muted fg2
+                // Album — fg2, smaller
                 Text(
                     text       = track?.album ?: "",
-                    color      = theme.fg2.copy(alpha = 0.6f),
+                    color      = theme.fg2,
                     fontSize   = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     textAlign  = TextAlign.Center,
@@ -214,13 +217,12 @@ fun PlayerScreen(
                     overflow   = TextOverflow.Ellipsis,
                 )
 
-                // Source + format badges inline
+                // Badges — source + format
                 if (track != null) {
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        // Source badge (NAVIDROME / LOCAL / etc.)
                         Text(
-                            text       = track.source.name,
+                            text       = track.source.name,           // NAVIDROME
                             color      = theme.green,
                             fontSize   = 8.sp,
                             fontFamily = FontFamily.Monospace,
@@ -228,10 +230,9 @@ fun PlayerScreen(
                                 .background(theme.green.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         )
-                        // Format badge (MP3 / FLAC / etc.)
                         if (track.suffix.isNotEmpty()) {
                             Text(
-                                text       = track.suffix.uppercase(),
+                                text       = track.suffix.uppercase(), // MP3 / FLAC
                                 color      = theme.yellow,
                                 fontSize   = 8.sp,
                                 fontFamily = FontFamily.Monospace,
@@ -244,7 +245,7 @@ fun PlayerScreen(
                 }
             }
 
-            // ── 4. Seek bar ────────────────────────────────────
+            // ── Seek bar ──────────────────────────────────────
             SeekBar(
                 position   = playerState.positionMs,
                 duration   = playerState.durationMs,
@@ -257,7 +258,7 @@ fun PlayerScreen(
 
             Spacer(Modifier.height(6.dp))
 
-            // ── 5. Transport controls ──────────────────────────
+            // ── Transport controls ─────────────────────────────
             TransportControls(
                 playerState = playerState,
                 theme       = theme,
@@ -270,7 +271,7 @@ fun PlayerScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // ── 6. Theme strip ─────────────────────────────────
+            // ── Theme strip ───────────────────────────────────
             ThemeStrip(
                 activeTheme   = theme,
                 listState     = themeStripState,
@@ -322,13 +323,13 @@ private fun ThemeStrip(
     onSelectTheme: (DroidTheme) -> Unit,
 ) {
     LazyRow(
-        state                  = listState,
-        modifier               = Modifier
+        state                 = listState,
+        modifier              = Modifier
             .fillMaxWidth()
             .background(activeTheme.panel)
             .padding(vertical = 8.dp),
-        contentPadding         = PaddingValues(horizontal = 10.dp),
-        horizontalArrangement  = Arrangement.spacedBy(8.dp),
+        contentPadding        = PaddingValues(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(DroidThemes.all) { t ->
             val isActive = t.id == activeTheme.id
@@ -347,7 +348,6 @@ private fun ThemeStrip(
                     .padding(5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Mini 4-color swatch row
                 Row(
                     modifier              = Modifier
                         .fillMaxWidth()
@@ -385,7 +385,8 @@ private fun SeekBar(
     accent: androidx.compose.ui.graphics.Color,
     trackColor: androidx.compose.ui.graphics.Color,
     textColor: androidx.compose.ui.graphics.Color,
-    onSeek: (Long) -> Unit, modifier: Modifier = Modifier,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Column(modifier = modifier) {
@@ -413,7 +414,8 @@ private fun msToTime(ms: Long): String {
 // ─── Transport controls ───────────────────────────────────────
 @Composable
 private fun TransportControls(
-    playerState: PlayerState, theme: DroidTheme,
+    playerState: PlayerState,
+    theme: DroidTheme,
     onPrev: () -> Unit, onPlayPause: () -> Unit, onNext: () -> Unit,
     onRepeat: () -> Unit, onShuffle: () -> Unit,
 ) {
@@ -425,8 +427,11 @@ private fun TransportControls(
         val shuffleColor = if (playerState.isShuffled) theme.accent else theme.fg2
         Text("⇌", color = shuffleColor, fontSize = 18.sp,
             modifier = Modifier.clickable(onClick = onShuffle))
+
         Text("⏮", color = theme.fg, fontSize = 24.sp,
             modifier = Modifier.clickable(onClick = onPrev))
+
+        // Play / pause — 56 dp circle, playBg fill, accent icon
         Box(
             modifier = Modifier
                 .size(56.dp)
@@ -441,8 +446,10 @@ private fun TransportControls(
                 fontSize = 26.sp,
             )
         }
+
         Text("⏭", color = theme.fg, fontSize = 24.sp,
             modifier = Modifier.clickable(onClick = onNext))
+
         val repeatIcon  = when (playerState.repeatMode) {
             RepeatMode.OFF -> "↻"; RepeatMode.ALL -> "🔁"; RepeatMode.ONE -> "🔂"
         }

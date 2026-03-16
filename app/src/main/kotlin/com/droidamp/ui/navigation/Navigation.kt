@@ -56,8 +56,8 @@ fun DroidampNavGraph(
     Scaffold(
         containerColor = theme.bg,
         bottomBar = {
-            Column {
-                if (currentRoute != Screen.Player.route) {
+            if (currentRoute != Screen.Player.route) {
+                Column {
                     MiniPlayerBar(
                         playerState = playerState,
                         theme       = theme,
@@ -66,25 +66,25 @@ fun DroidampNavGraph(
                         onPlayPause = { playerViewModel.togglePlayPause() },
                         onNext      = { playerViewModel.next() },
                     )
-                }
-                NavigationBar(containerColor = theme.panel) {
-                    bottomNavScreens.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick  = { navigateTo(screen.route) },
-                            icon     = { Text(screen.icon, fontSize = 16.sp) },
-                            label    = {
-                                Text(screen.label, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor   = theme.accent,
-                                selectedTextColor   = theme.accent,
-                                unselectedIconColor = theme.fg2,
-                                unselectedTextColor = theme.fg2,
-                                indicatorColor      = theme.accent.copy(alpha = 0.15f),
-                            ),
-                        )
+                    NavigationBar(containerColor = theme.panel) {
+                        bottomNavScreens.forEach { screen ->
+                            val selected = currentRoute == screen.route
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick  = { navigateTo(screen.route) },
+                                icon     = { Text(screen.icon, fontSize = 16.sp) },
+                                label    = {
+                                    Text(screen.label, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor   = theme.accent,
+                                    selectedTextColor   = theme.accent,
+                                    unselectedIconColor = theme.fg2,
+                                    unselectedTextColor = theme.fg2,
+                                    indicatorColor      = theme.accent.copy(alpha = 0.15f),
+                                ),
+                            )
+                        }
                     }
                 }
             }
