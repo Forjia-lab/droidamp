@@ -228,9 +228,11 @@ class PlayerViewModel @Inject constructor(
             val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
             rms.coerceIn(0f, 1f)
         }
-        // smooth with previous frame
+        // smooth with previous frame, then scale up so low-level signals are visible
         val prev = _fftData.value
-        _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
+        val smoothed = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
+        val scaledFft = FloatArray(smoothed.size) { i -> (smoothed[i] * 4f).coerceAtMost(1f) }
+        _fftData.value = scaledFft
     }
 
     override fun onCleared() {
