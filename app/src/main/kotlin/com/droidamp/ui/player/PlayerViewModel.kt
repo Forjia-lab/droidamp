@@ -1,0 +1,218 @@
+package com.droidamp.ui.player
+
+import android.content.ComponentName
+import android.content.Context
+import android.media.audiofx.Visualizer
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.droidamp.domain.model.PlayerState
+import com.droidamp.domain.model.RepeatMode
+import com.droidamp.domain.model.Track
+import com.droidamp.service.DroidampPlaybackService
+import com.droidamp.ui.visualizer.VisualizerMode
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.guava.await
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+import kotlin.math.abs
+import kotlin.math.sqrt
+
+@HiltViewModel
+class PlayerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
+) : ViewModel() {
+
+    // ── Player state ──────────────────────────────────────────
+    private val _playerState = MutableStateFlow(PlayerState())
+    val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
+
+    // ── Visualizer ────────────────────────────────────────────
+    private val _fftData = MutableStateFlow(FloatArray(20) { 0f })
+    val fftData: StateFlow<FloatArray> = _fftData.asStateFlow()
+
+    private val _vizMode = MutableStateFlow(VisualizerMode.DEFAULT)
+    val vizMode: StateFlow<VisualizerMode> = _vizMode.asStateFlow()
+
+    private val _isVizFullScreen = MutableStateFlow(false)
+    val isVizFullScreen: StateFlow<Boolean> = _isVizFullScreen.asStateFlow()
+
+    // ── MediaController ───────────────────────────────────────
+    private var controller: MediaController? = null
+    private var visualizer: Visualizer? = null
+
+    init {
+        connectToService()
+        startPositionPolling()
+    }
+
+    private fun connectToService() {
+        val sessionToken = SessionToken(
+            context,
+            ComponentName(context, DroidampPlaybackService::class.java)
+        )
+        viewModelScope.launch {
+            val future = MediaController.Builder(context, sessionToken).buildAsync()
+            controller = future.await()
+            controller?.addListener(playerListener)
+        }
+    }
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _playerState.update { it.copy(isPlaying = isPlaying) }
+            if (isPlaying) attachVisualizer() else detachVisualizer()
+        }
+        override fun onMediaMetadataChanged(metadata: MediaMetadata) {
+            // sync current track info from MediaItem extras if needed
+        }
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            _playerState.update {
+                it.copy(repeatMode = when (repeatMode) {
+                    Player.REPEAT_MODE_ONE -> RepeatMode.ONE
+                    Player.REPEAT_MODE_ALL -> RepeatMode.ALL
+                    else -> RepeatMode.OFF
+                })
+            }
+        }
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            _playerState.update { it.copy(isShuffled = shuffleModeEnabled) }
+        }
+    }
+
+    // ── Position polling ──────────────────────────────────────
+    private fun startPositionPolling() {
+        viewModelScope.launch {
+            while (true) {
+                delay(500)
+                controller?.let { c ->
+                    _playerState.update { it.copy(
+                        positionMs = c.currentPosition,
+                        durationMs = c.duration.coerceAtLeast(0L),
+                    ) }
+                }
+            }
+        }
+    }
+
+    // ── Public controls ───────────────────────────────────────
+
+    fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
+        val items = tracks.map { track ->
+            MediaItem.Builder()
+                .setUri(track.streamUrl)
+                .setMediaId(track.id)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artist)
+                        .setAlbumTitle(track.album)
+                        .build()
+                )
+                .build()
+        }
+        controller?.run {
+            setMediaItems(items, startIndex, 0L)
+            prepare()
+            play()
+        }
+        _playerState.update { it.copy(queue = tracks, queueIndex = startIndex, currentTrack = tracks.getOrNull(startIndex)) }
+    }
+
+    fun togglePlayPause() {
+        controller?.let { if (it.isPlaying) it.pause() else it.play() }
+    }
+
+    fun next() { controller?.seekToNextMediaItem() }
+    fun prev() { controller?.seekToPreviousMediaItem() }
+
+    fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
+
+    fun setVolume(volume: Float) {
+        controller?.volume = volume
+        _playerState.update { it.copy(volume = volume) }
+    }
+
+    fun toggleRepeat() {
+        val next = when (_playerState.value.repeatMode) {
+            RepeatMode.OFF -> RepeatMode.ALL
+            RepeatMode.ALL -> RepeatMode.ONE
+            RepeatMode.ONE -> RepeatMode.OFF
+        }
+        _playerState.update { it.copy(repeatMode = next) }
+        controller?.repeatMode = when (next) {
+            RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+            RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+            RepeatMode.ONE -> Player.REPEAT_MODE_ONE
+        }
+    }
+
+    fun toggleShuffle() {
+        val newShuffle = !_playerState.value.isShuffled
+        controller?.shuffleModeEnabled = newShuffle
+    }
+
+    // ── Visualizer mode ───────────────────────────────────────
+
+    fun nextVizMode()  { _vizMode.update { it.next() } }
+    fun prevVizMode()  { _vizMode.update { it.prev() } }
+    fun setVizMode(mode: VisualizerMode) { _vizMode.value = mode }
+    fun toggleVizFullScreen() { _isVizFullScreen.update { !it } }
+
+    // ── Android Visualizer API / FFT ──────────────────────────
+
+    private fun attachVisualizer() {
+        detachVisualizer()
+        val audioSessionId = 0 // global output mix; MediaController doesn't expose session id
+        try {
+            visualizer = Visualizer(audioSessionId).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[1]
+                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, sampleRate: Int) {}
+                    override fun onFftDataCapture(v: Visualizer, fft: ByteArray, sampleRate: Int) {
+                        processFft(fft)
+                    }
+                }, Visualizer.getMaxCaptureRate() / 2, false, true)
+                enabled = true
+            }
+        } catch (e: Exception) {
+            // Visualizer requires RECORD_AUDIO; gracefully degrade if denied
+        }
+    }
+
+    private fun detachVisualizer() {
+        visualizer?.run { enabled = false; release() }
+        visualizer = null
+        _fftData.value = FloatArray(20) { 0f }
+    }
+
+    private fun processFft(fft: ByteArray) {
+        val bands = 20
+        val bucketSize = (fft.size / 2) / bands
+        val result = FloatArray(bands) { b ->
+            val start = b * bucketSize
+            val end   = start + bucketSize
+            val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
+            rms.coerceIn(0f, 1f)
+        }
+        // smooth with previous frame
+        val prev = _fftData.value
+        _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
+    }
+
+    override fun onCleared() {
+        detachVisualizer()
+        controller?.run { removeListener(playerListener); release() }
+        super.onCleared()
+    }
+}
