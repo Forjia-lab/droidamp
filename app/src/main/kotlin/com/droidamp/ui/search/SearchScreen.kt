@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.droidamp.domain.model.Track
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.ThemeViewModel
@@ -44,19 +45,29 @@ fun SearchScreen(
     ) {
         // Header
         Row(
-            modifier = Modifier
+            modifier          = Modifier
                 .fillMaxWidth()
                 .background(theme.panel)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "SEARCH",
-                color = theme.accent,
-                fontSize = 14.sp,
+                text       = "SEARCH",
+                color      = theme.accent,
+                fontSize   = 14.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
+                modifier   = Modifier.weight(1f),
             )
+            if (uiState.selectedAlbum != null) {
+                Text(
+                    text       = "← Back",
+                    color      = theme.fg2,
+                    fontSize   = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier   = Modifier.clickable { viewModel.clearAlbumSelection() },
+                )
+            }
         }
 
         // Search input
@@ -119,6 +130,18 @@ fun SearchScreen(
         }
 
         when {
+            uiState.selectedAlbum != null -> {
+                SearchAlbumTrackList(
+                    album       = uiState.selectedAlbum!!,
+                    tracks      = uiState.selectedAlbumTracks,
+                    isLoading   = uiState.isLoadingTracks,
+                    theme       = theme,
+                    onTrackClick = { idx ->
+                        playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
+                        onNavigateToPlayer()
+                    },
+                )
+            }
             uiState.isLoading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = theme.accent)
@@ -161,6 +184,7 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { viewModel.loadAlbumTracks(album) }
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -182,6 +206,7 @@ fun SearchScreen(
                                     Text(album.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(album.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
+                                Text("›", color = theme.fg2, fontSize = 16.sp)
                             }
                             Divider(color = theme.border, thickness = 0.5.dp)
                         }
@@ -214,6 +239,56 @@ fun SearchScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SearchAlbumTrackList(
+    album: com.droidamp.domain.model.Album,
+    tracks: List<Track>,
+    isLoading: Boolean,
+    theme: DroidTheme,
+    onTrackClick: (Int) -> Unit,
+) {
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = theme.accent)
+        }
+        return
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface)) {
+                    if (album.coverArtId != null) AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
+                    else Text("♫", color = theme.accent, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(album.name, color = theme.fg, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text(album.artist, color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    if (album.year > 0) Text(album.year.toString(), color = theme.fg2.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+            Divider(color = theme.border)
+        }
+        items(tracks.withIndex().toList()) { (idx, track) ->
+            Row(
+                modifier          = Modifier.fillMaxWidth().clickable { onTrackClick(idx) }.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
+                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(24.dp),
+                )
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                }
+                Text("%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000), color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            }
+            Divider(color = theme.border, thickness = 0.5.dp)
         }
     }
 }

@@ -132,8 +132,8 @@ private fun DrawScope.drawRetro(fft: FloatArray, color: Color) {
     val charH    = size.height / 8f
     val paint    = Paint().apply {
         isAntiAlias = true
-        typeface    = Typeface.MONOSPACE
-        textSize    = charH * 1.05f
+        typeface    = Typeface.DEFAULT
+        textSize    = charH * 1.1f
         textAlign   = Paint.Align.CENTER
     }
     drawIntoCanvas { canvas ->
