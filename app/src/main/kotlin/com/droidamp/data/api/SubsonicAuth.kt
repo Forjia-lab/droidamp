@@ -9,12 +9,13 @@ import javax.inject.Singleton
 
 @Singleton
 class ServerUrlProvider @Inject constructor() {
-    private var _baseUrl: String = "http://localhost:4533"
-    private var _username: String = ""
-    private var _password: String = ""
+    private var _baseUrl: String = "http://100.122.7.119:4533"
+    private var _username: String = "admin"
+    private var _password: String = "admin"
 
     fun baseUrl() = _baseUrl
     fun username() = _username
+    fun password() = _password
 
     fun update(baseUrl: String, username: String, password: String) {
         _baseUrl  = baseUrl.trimEnd('/')
@@ -44,7 +45,7 @@ class SubsonicAuthInterceptor @Inject constructor(
         val original   = chain.request()
         val urlBuilder = original.url.newBuilder()
         val salt  = UUID.randomUUID().toString().replace("-", "").take(10)
-        val token = md5("${serverUrlProvider.username()}$salt")
+        val token = md5("${serverUrlProvider.password()}$salt")
         urlBuilder
             .addQueryParameter("u", serverUrlProvider.username())
             .addQueryParameter("t", token)
