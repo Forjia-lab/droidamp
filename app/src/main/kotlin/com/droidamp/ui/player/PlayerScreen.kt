@@ -46,6 +46,7 @@ import com.droidamp.ui.visualizer.VisualizerMode
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     onNavigateToLibrary: () -> Unit,
+    onNavigateToSettings: () -> Unit,
 ) {
     val playerState by viewModel.playerState.collectAsState()
     val fftData     by viewModel.fftData.collectAsState()
@@ -70,8 +71,9 @@ fun PlayerScreen(
             // ── Header bar ────────────────────────────────────
             PlayerHeader(
                 theme = currentTheme,
-                onLibraryClick = onNavigateToLibrary,
-                onThemeClick   = { showThemePicker = !showThemePicker },
+                onLibraryClick  = onNavigateToLibrary,
+                onThemeClick    = { showThemePicker = !showThemePicker },
+                onSettingsClick = onNavigateToSettings,
             )
 
             // ── Visualizer ────────────────────────────────────
@@ -281,7 +283,7 @@ fun PlayerScreen(
 // ─── Sub-components ───────────────────────────────────────────
 
 @Composable
-private fun PlayerHeader(theme: DroidTheme, onLibraryClick: () -> Unit, onThemeClick: () -> Unit) {
+private fun PlayerHeader(theme: DroidTheme, onLibraryClick: () -> Unit, onThemeClick: () -> Unit, onSettingsClick: () -> Unit) {
     Row(
         modifier            = Modifier
             .fillMaxWidth()
@@ -299,6 +301,7 @@ private fun PlayerHeader(theme: DroidTheme, onLibraryClick: () -> Unit, onThemeC
         )
         Text("☰", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onLibraryClick).padding(8.dp))
         Text("◑", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onThemeClick).padding(8.dp))
+        Text("⚙", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onSettingsClick).padding(8.dp))
     }
 }
 

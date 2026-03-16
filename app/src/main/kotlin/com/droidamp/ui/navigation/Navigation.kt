@@ -9,10 +9,13 @@ import com.droidamp.ui.player.PlayerScreen
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.library.LibraryScreen
 import com.droidamp.ui.library.LibraryViewModel
+import com.droidamp.ui.settings.SettingsScreen
+import com.droidamp.ui.settings.SettingsViewModel
 
 sealed class Screen(val route: String) {
-    object Player  : Screen("player")
-    object Library : Screen("library")
+    object Player   : Screen("player")
+    object Library  : Screen("library")
+    object Settings : Screen("settings")
 }
 
 @Composable
@@ -21,7 +24,8 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
         composable(Screen.Player.route) {
             PlayerScreen(
                 viewModel = playerViewModel,
-                onNavigateToLibrary = { navController.navigate(Screen.Library.route) },
+                onNavigateToLibrary  = { navController.navigate(Screen.Library.route) },
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
             )
         }
         composable(Screen.Library.route) {
@@ -30,6 +34,13 @@ fun DroidampNavGraph(navController: NavHostController, playerViewModel: PlayerVi
                 libraryViewModel = libraryViewModel,
                 playerViewModel  = playerViewModel,
                 onNavigateBack   = { navController.popBackStack() },
+            )
+        }
+        composable(Screen.Settings.route) {
+            val settingsViewModel: SettingsViewModel = hiltViewModel()
+            SettingsScreen(
+                viewModel       = settingsViewModel,
+                onNavigateBack  = { navController.popBackStack() },
             )
         }
     }
