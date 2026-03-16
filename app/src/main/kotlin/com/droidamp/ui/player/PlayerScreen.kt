@@ -65,7 +65,7 @@ fun PlayerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 8.dp),
         ) {
             // ── Header bar ────────────────────────────────────
             PlayerHeader(
@@ -75,12 +75,12 @@ fun PlayerScreen(
             )
 
             // ── Visualizer ────────────────────────────────────
-            val vizHeight = if (vizFull) 0.dp else 140.dp
+            val vizHeight = if (vizFull) 0.dp else 100.dp
             if (!vizFull) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(140.dp)
+                        .height(100.dp)
                         .background(currentTheme.panel)
                 ) {
                     VisualizerCanvas(
@@ -123,13 +123,13 @@ fun PlayerScreen(
             Column(
                 modifier            = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Album art
                 Box(
                     modifier = Modifier
-                        .size(180.dp)
+                        .size(150.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(currentTheme.surface)
                 ) {
@@ -143,13 +143,13 @@ fun PlayerScreen(
                         Text(
                             text     = "♫",
                             color    = currentTheme.accent,
-                            fontSize = 64.sp,
+                            fontSize = 48.sp,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // Track title
                 Text(
@@ -203,7 +203,7 @@ fun PlayerScreen(
                     .padding(horizontal = 20.dp),
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
             // ── Transport controls ────────────────────────────
             TransportControls(
@@ -216,7 +216,7 @@ fun PlayerScreen(
                 onShuffle   = { viewModel.toggleShuffle() },
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
             // ── Volume slider ─────────────────────────────────
             VolumeRow(
