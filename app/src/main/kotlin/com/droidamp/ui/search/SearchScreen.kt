@@ -22,16 +22,20 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidTheme
-import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
+import com.droidamp.ui.visualizer.VisualizerCanvas
 
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     playerViewModel: PlayerViewModel,
+    themeViewModel: ThemeViewModel,
     onNavigateToPlayer: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val theme = DroidThemes.Catppuccin
+    val uiState  by viewModel.uiState.collectAsState()
+    val theme    by themeViewModel.theme.collectAsState()
+    val fftData  by playerViewModel.fftData.collectAsState()
+    val vizMode  by playerViewModel.vizMode.collectAsState()
 
     Column(
         modifier = Modifier
@@ -93,6 +97,25 @@ fun SearchScreen(
                     modifier = Modifier.clickable { viewModel.setQuery("") }.padding(start = 8.dp),
                 )
             }
+        }
+
+        // Visualizer strip
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .background(theme.panel),
+        ) {
+            VisualizerCanvas(
+                fftData         = fftData,
+                mode            = vizMode,
+                accentColor     = theme.vizBar,
+                secondaryColor  = theme.red,
+                backgroundColor = theme.panel,
+                modifier        = Modifier.fillMaxSize(),
+                onSwipeNext     = { playerViewModel.nextVizMode() },
+                onSwipePrev     = { playerViewModel.prevVizMode() },
+            )
         }
 
         when {

@@ -24,16 +24,17 @@ import coil.compose.AsyncImage
 import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Track
 import com.droidamp.ui.player.PlayerViewModel
-import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
 
 @Composable
 fun LibraryScreen(
     libraryViewModel: LibraryViewModel,
     playerViewModel: PlayerViewModel,
+    themeViewModel: ThemeViewModel,
     onNavigateToPlayer: () -> Unit,
 ) {
     val uiState by libraryViewModel.uiState.collectAsState()
-    val theme   = DroidThemes.Catppuccin
+    val theme   by themeViewModel.theme.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     val q = searchQuery.trim().lowercase()
@@ -154,9 +155,6 @@ fun LibraryScreen(
         // ── Content ──────────────────────────────────────────
         Box(modifier = Modifier.weight(1f)) {
             when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.align(Alignment.Center))
-                }
                 uiState.selectedAlbum != null -> {
                     AlbumTrackList(
                         album  = uiState.selectedAlbum!!,
@@ -185,6 +183,9 @@ fun LibraryScreen(
                             onNavigateToPlayer()
                         },
                     )
+                }
+                uiState.isLoading -> {
+                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.align(Alignment.Center))
                 }
                 uiState.tab is LibraryTab.Albums -> {
                     AlbumGrid(

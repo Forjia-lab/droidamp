@@ -1,27 +1,33 @@
 package com.droidamp.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
-    val theme = DroidThemes.Catppuccin
+fun SettingsScreen(viewModel: SettingsViewModel, themeViewModel: ThemeViewModel) {
+    val theme      by themeViewModel.theme.collectAsState()
 
     val url        by viewModel.url.collectAsState()
     val username   by viewModel.username.collectAsState()
@@ -56,6 +62,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         Column(
             modifier            = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -123,6 +130,59 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     fontFamily = FontFamily.Monospace,
                     modifier   = Modifier.align(Alignment.CenterHorizontally),
                 )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Divider(color = theme.border)
+            Spacer(Modifier.height(8.dp))
+
+            // Themes section
+            Label("THEMES", theme)
+            Spacer(Modifier.height(4.dp))
+            DroidThemes.all.chunked(3).forEach { row ->
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { t ->
+                        val isActive = t.id == theme.id
+                        Column(
+                            modifier            = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(t.bg)
+                                .then(
+                                    if (isActive) Modifier.border(2.dp, t.accent, RoundedCornerShape(8.dp))
+                                    else Modifier
+                                )
+                                .clickable { themeViewModel.setTheme(t) }
+                                .padding(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            // Mini color strip
+                            Row(
+                                modifier              = Modifier.fillMaxWidth().height(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                listOf(t.accent, t.green, t.yellow, t.red).forEach { c ->
+                                    Box(modifier = Modifier.weight(1f).fillMaxHeight().background(c, RoundedCornerShape(2.dp)))
+                                }
+                            }
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                text      = t.displayName,
+                                color     = t.fg,
+                                fontSize  = 8.sp,
+                                fontFamily = FontFamily.Monospace,
+                                textAlign = TextAlign.Center,
+                                maxLines  = 2,
+                            )
+                        }
+                    }
+                    // fill remaining slots in last row
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
