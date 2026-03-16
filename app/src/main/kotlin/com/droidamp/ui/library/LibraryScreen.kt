@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +43,16 @@ fun LibraryScreen(
     val uiState     by libraryViewModel.uiState.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val theme       = DroidThemes.Catppuccin  // TODO: wire up shared theme state
+
+    var searchQuery by remember { mutableStateOf("") }
+    val q = searchQuery.trim().lowercase()
+
+    val filteredAlbums    = if (q.isEmpty()) uiState.albums
+                            else uiState.albums.filter { q in it.name.lowercase() || q in it.artist.lowercase() }
+    val filteredArtists   = if (q.isEmpty()) uiState.artists
+                            else uiState.artists.filter { q in it.name.lowercase() }
+    val filteredPlaylists = if (q.isEmpty()) uiState.playlists
+                            else uiState.playlists.filter { q in it.name.lowercase() }
 
     Column(
         modifier = Modifier
@@ -105,6 +118,50 @@ fun LibraryScreen(
                     )
                 }
             }
+
+            // ── Search bar ────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.bg)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("⌕", color = theme.fg2, fontSize = 14.sp, modifier = Modifier.padding(end = 6.dp))
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = theme.fg,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    decorationBox = { inner ->
+                        Box {
+                            if (searchQuery.isEmpty()) Text(
+                                "search…",
+                                color = theme.fg2.copy(alpha = 0.4f),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            inner()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                if (searchQuery.isNotEmpty()) {
+                    Text(
+                        "✕",
+                        color = theme.fg2,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clickable { searchQuery = "" }
+                            .padding(start = 6.dp),
+                    )
+                }
+            }
         }
 
         // ── Content ───────────────────────────────────────────
@@ -129,14 +186,14 @@ fun LibraryScreen(
                 }
                 uiState.tab is LibraryTab.Albums -> {
                     AlbumGrid(
-                        albums = uiState.albums,
+                        albums = filteredAlbums,
                         theme  = theme,
                         onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
                     )
                 }
                 uiState.tab is LibraryTab.Artists -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(uiState.artists) { artist ->
+                        items(filteredArtists) { artist ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -156,7 +213,7 @@ fun LibraryScreen(
                 }
                 uiState.tab is LibraryTab.Playlists -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(uiState.playlists) { pl ->
+                        items(filteredPlaylists) { pl ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
