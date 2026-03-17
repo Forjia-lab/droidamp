@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
@@ -73,6 +74,18 @@ class DroidampPlaybackService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
+
+    /**
+     * Called when the user swipes the app away from the Recents screen.
+     * Stop the service (and dismiss the notification) only when nothing is playing.
+     * If music is actively playing, leave the foreground service running so playback continues.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val player = mediaSession?.player
+        if (player == null || !player.playWhenReady || player.playbackState == Player.STATE_ENDED) {
+            stopSelf()
+        }
+    }
 
     override fun onDestroy() {
         mediaSession?.run {

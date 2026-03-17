@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.audiofx.Equalizer
 import android.media.audiofx.Visualizer
+import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -122,7 +123,14 @@ class PlayerViewModel @Inject constructor(
             _playerState.update { it.copy(isPlaying = isPlaying) }
             if (isPlaying) attachAudioEffects() else detachAudioEffects()
         }
-        override fun onMediaMetadataChanged(metadata: MediaMetadata) {}
+        override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+            // Keep UI in sync when next/prev is triggered from the notification or lock screen
+            val idx = controller?.currentMediaItemIndex ?: return
+            _playerState.update { it.copy(
+                queueIndex   = idx,
+                currentTrack = it.queue.getOrNull(idx),
+            ) }
+        }
         override fun onRepeatModeChanged(repeatMode: Int) {
             _playerState.update {
                 it.copy(repeatMode = when (repeatMode) {
@@ -164,6 +172,7 @@ class PlayerViewModel @Inject constructor(
                         .setTitle(track.title)
                         .setArtist(track.artist)
                         .setAlbumTitle(track.album)
+                        .setArtworkUri(track.coverArtId?.let { Uri.parse(it) })
                         .build()
                 )
                 .build()
