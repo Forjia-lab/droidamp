@@ -467,13 +467,26 @@ private fun TransportRow(
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
-            // \uFE0E = text variation selector — forces text rendering so color is respected
-            Text(
-                text       = if (playerState.isPlaying) "⏸\uFE0E" else "▶\uFE0E",
-                color      = theme.accent,
-                fontSize   = 24.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+            if (playerState.isPlaying) {
+                // Canvas-drawn pause bars — bypasses Android emoji color override entirely
+                val accentColor = theme.accent
+                Canvas(modifier = Modifier.size(18.dp)) {
+                    val barW = size.width * 0.28f
+                    val barH = size.height * 0.75f
+                    val top  = (size.height - barH) / 2f
+                    drawRect(color = accentColor, topLeft = androidx.compose.ui.geometry.Offset(0f, top),
+                        size = androidx.compose.ui.geometry.Size(barW, barH))
+                    drawRect(color = accentColor, topLeft = androidx.compose.ui.geometry.Offset(size.width - barW, top),
+                        size = androidx.compose.ui.geometry.Size(barW, barH))
+                }
+            } else {
+                Text(
+                    text       = "▶\uFE0E",
+                    color      = theme.accent,
+                    fontSize   = 24.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
         }
         // Next
         Box(

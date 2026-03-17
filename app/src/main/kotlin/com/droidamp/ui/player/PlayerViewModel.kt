@@ -270,13 +270,13 @@ class PlayerViewModel @Inject constructor(
 
     private fun processFft(fft: ByteArray) {
         val bands = 20
-        // Skip fft[0] (DC offset); usable data starts at index 1
-        val usable    = fft.size / 2 - 2  // skip indices 0 (DC) and 1 (Nyquist mirror)
-        val bucketSize = (usable / bands).coerceAtLeast(1)
+        // Drop fft[0] (DC) and fft[1] (Nyquist) — only audio frequency data from index 2 onward
+        val usableFft  = fft.drop(2).toByteArray()
+        val bucketSize = (usableFft.size / bands).coerceAtLeast(1)
         val result = FloatArray(bands) { b ->
-            val start = 2 + b * bucketSize
-            val end   = (start + bucketSize).coerceAtMost(fft.size / 2)
-            val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
+            val start = b * bucketSize
+            val end   = (start + bucketSize).coerceAtMost(usableFft.size)
+            val rms   = sqrt(usableFft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
             (rms * 3f).coerceIn(0f, 1f)
         }
         val prev = _fftData.value
