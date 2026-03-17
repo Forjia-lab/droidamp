@@ -81,6 +81,7 @@ fun PlayerScreen(
     val vizMode     by playerViewModel.vizMode.collectAsState()
     val vizFull     by playerViewModel.isVizFullScreen.collectAsState()
     val eqBands     by playerViewModel.eqBands.collectAsState()
+    val activePreset by playerViewModel.activePreset.collectAsState()
     val starredIds  by playerViewModel.starredIds.collectAsState()
 
     var activeTab        by remember { mutableStateOf(PlayerTab.QUEUE) }
@@ -185,11 +186,13 @@ fun PlayerScreen(
             onQueue     = { activeTab = PlayerTab.QUEUE },
         )
 
-        // 6. 10-band EQ — 72dp ─────────────────────────────────
+        // 6. 10-band EQ — 96dp ─────────────────────────────────
         EqSection(
-            bands        = eqBands,
-            theme        = theme,
-            onBandChange = { idx, level -> playerViewModel.setEqBand(idx, level) },
+            bands         = eqBands,
+            theme         = theme,
+            activePreset  = activePreset,
+            onBandChange  = { idx, level -> playerViewModel.setEqBand(idx, level) },
+            onPreset      = { playerViewModel.applyPreset(it) },
         )
 
         // 7. Tab row — 36dp ────────────────────────────────────
@@ -521,22 +524,43 @@ private val EQ_LABELS = listOf("60", "170", "310", "600", "1K", "3K", "6K", "12K
 private fun EqSection(
     bands:        List<EqBand>,
     theme:        DroidTheme,
+    activePreset: String,
     onBandChange: (Int, Short) -> Unit,
+    onPreset:     (String) -> Unit,
 ) {
+    val chipShape = RoundedCornerShape(6.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .height(96.dp)
             .background(theme.panel)
-            .padding(horizontal = 14.dp, vertical = 5.dp),
+            .padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
-        Text(
-            text       = "10 BAND EQ",
-            color      = theme.fg2,
-            fontSize   = 9.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier   = Modifier.padding(bottom = 3.dp),
-        )
+        // ── Preset chips ──────────────────────────────────────
+        LazyRow(
+            modifier            = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            items(PlayerViewModel.EQ_PRESETS.keys.toList()) { name ->
+                val active = name == activePreset
+                Box(
+                    modifier = Modifier
+                        .clip(chipShape)
+                        .background(if (active) theme.accent else theme.surface)
+                        .clickable { onPreset(name) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text       = name,
+                        color      = if (active) theme.bg else theme.fg2,
+                        fontSize   = 7.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        // ── EQ bars ───────────────────────────────────────────
         if (bands.isEmpty()) {
             Text(
                 text       = "plays first to enable",

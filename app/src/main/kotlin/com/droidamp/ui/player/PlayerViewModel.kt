@@ -4,6 +4,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.audiofx.Equalizer
 import android.media.audiofx.Visualizer
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -22,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
@@ -40,7 +45,26 @@ data class EqBand(
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val dataStore: DataStore<Preferences>,
 ) : ViewModel() {
+
+    companion object {
+        private val KEY_EQ_PRESET = stringPreferencesKey("eq_preset")
+
+        // dB values; applied as dB * 100 = millibels
+        val EQ_PRESETS: Map<String, IntArray> = linkedMapOf(
+            "Flat"       to intArrayOf( 0,  0,  0,  0,  0,  0,  0,  0,  0,  0),
+            "Bass Boost" to intArrayOf( 6,  5,  4,  2,  0,  0,  0,  0,  0,  0),
+            "Treble"     to intArrayOf( 0,  0,  0,  0,  0,  2,  3,  4,  5,  6),
+            "Rock"       to intArrayOf( 4,  3,  2,  0, -1,  0,  2,  3,  4,  4),
+            "Electronic" to intArrayOf( 5,  4,  0, -2, -3,  0,  3,  4,  5,  5),
+            "Classical"  to intArrayOf( 3,  2,  0,  0,  0,  0,  0,  2,  3,  3),
+            "Hip Hop"    to intArrayOf( 5,  4,  2,  3, -1,  0,  1,  2,  3,  4),
+            "Jazz"       to intArrayOf( 2,  1,  0,  2, -1, -1,  0,  1,  2,  3),
+            "Pop"        to intArrayOf(-1,  0,  2,  3,  3,  2,  0, -1, -1, -1),
+            "Dance"      to intArrayOf( 4,  3,  1,  0, -1,  2,  3,  4,  3,  2),
+        )
+    }
 
     // ── Player state ──────────────────────────────────────────
     private val _playerState = MutableStateFlow(PlayerState())
@@ -60,6 +84,9 @@ class PlayerViewModel @Inject constructor(
     private val _eqBands = MutableStateFlow<List<EqBand>>(emptyList())
     val eqBands: StateFlow<List<EqBand>> = _eqBands.asStateFlow()
 
+    private val _activePreset = MutableStateFlow("Flat")
+    val activePreset: StateFlow<String> = _activePreset.asStateFlow()
+
     // ── Favorites (in-memory) ─────────────────────────────────
     private val _starredIds = MutableStateFlow<Set<String>>(emptySet())
     val starredIds: StateFlow<Set<String>> = _starredIds.asStateFlow()
@@ -72,6 +99,10 @@ class PlayerViewModel @Inject constructor(
     init {
         connectToService()
         startPositionPolling()
+        viewModelScope.launch {
+            val prefs = dataStore.data.first()
+            _activePreset.value = prefs[KEY_EQ_PRESET] ?: "Flat"
+        }
     }
 
     private fun connectToService() {
@@ -208,6 +239,20 @@ class PlayerViewModel @Inject constructor(
         } catch (_: Exception) {}
     }
 
+    fun applyPreset(name: String) {
+        val presetDb = EQ_PRESETS[name] ?: return
+        val bands    = _eqBands.value
+        if (bands.isEmpty()) return
+        bands.forEach { band ->
+            val displayIdx = (band.index.toFloat() / bands.size * 10).toInt().coerceIn(0, 9)
+            val levelMb    = (presetDb[displayIdx] * 100)
+                .coerceIn(band.minLevel.toInt(), band.maxLevel.toInt()).toShort()
+            setEqBand(band.index, levelMb)
+        }
+        _activePreset.value = name
+        viewModelScope.launch { dataStore.edit { it[KEY_EQ_PRESET] = name } }
+    }
+
     // ── Audio effects ─────────────────────────────────────────
 
     private fun attachAudioEffects() {
@@ -261,6 +306,8 @@ class PlayerViewModel @Inject constructor(
                 }
                 _eqBands.value = bands
             }
+            // Re-apply last-used preset after equalizer is attached
+            applyPreset(_activePreset.value)
         } catch (_: Exception) {}
     }
 
