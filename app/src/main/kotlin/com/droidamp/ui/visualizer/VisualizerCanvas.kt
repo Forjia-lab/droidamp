@@ -4,6 +4,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -14,6 +15,17 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.*
+
+// ─────────────────────────────────────────────────────────────
+//  VisualizerCanvas
+//
+//  Composable that renders the live spectrum visualizer.
+//  - fftData: FloatArray of 0..1 normalized band amplitudes (20 bands)
+//  - mode: one of the 8 VisualizerMode values
+//  - accentColor, secondaryColor: from the active DroidTheme
+//  - Swipe left/right → cycle modes
+//  - Double-tap → toggle full-screen (handled by caller via onModeChange)
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun VisualizerCanvas(
@@ -29,6 +41,7 @@ fun VisualizerCanvas(
     var swipeAccum by remember { mutableFloatStateOf(0f) }
     val wavePhase = remember { mutableFloatStateOf(0f) }
 
+    // advance wave phase on each recompose
     LaunchedEffect(fftData) {
         wavePhase.value += 0.06f
     }
@@ -60,6 +73,7 @@ fun VisualizerCanvas(
     }
 }
 
+// ─── BARS ────────────────────────────────────────────────────
 private fun DrawScope.drawBars(fft: FloatArray, color: Color) {
     val n     = fft.size
     val gap   = size.width * 0.015f
@@ -72,6 +86,7 @@ private fun DrawScope.drawBars(fft: FloatArray, color: Color) {
     }
 }
 
+// ─── BRICKS ──────────────────────────────────────────────────
 private fun DrawScope.drawBricks(fft: FloatArray, color: Color) {
     val n        = fft.size
     val gap      = size.width * 0.015f
@@ -93,6 +108,7 @@ private fun DrawScope.drawBricks(fft: FloatArray, color: Color) {
     }
 }
 
+// ─── COLUMNS ─────────────────────────────────────────────────
 private fun DrawScope.drawColumns(fft: FloatArray, color: Color) {
     val n    = fft.size
     val colW = size.width / n
@@ -107,6 +123,8 @@ private fun DrawScope.drawColumns(fft: FloatArray, color: Color) {
     }
 }
 
+// ─── RETRO (Unicode block chars on Canvas via Paint) ─────────
+//  Renders ▁▂▃▄▅▆▇█ stacked vertically — pure CLIAMP terminal DNA
 private fun DrawScope.drawRetro(fft: FloatArray, color: Color) {
     val blocks   = listOf("▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
     val n        = fft.size
@@ -114,7 +132,7 @@ private fun DrawScope.drawRetro(fft: FloatArray, color: Color) {
     val charH    = size.height / 8f
     val paint    = Paint().apply {
         isAntiAlias = true
-        typeface    = Typeface.DEFAULT
+        typeface    = Typeface.MONOSPACE
         textSize    = charH * 1.05f
         textAlign   = Paint.Align.CENTER
     }
@@ -138,11 +156,13 @@ private fun DrawScope.drawRetro(fft: FloatArray, color: Color) {
     }
 }
 
+// ─── WAVE ────────────────────────────────────────────────────
 private fun DrawScope.drawWave(fft: FloatArray, color: Color, secondary: Color, phase: Float) {
     val W   = size.width
     val H   = size.height
     val pts = 120
 
+    // primary wave
     val path1 = Path()
     for (x in 0..pts) {
         val normX  = x.toFloat() / pts
@@ -153,6 +173,7 @@ private fun DrawScope.drawWave(fft: FloatArray, color: Color, secondary: Color, 
     }
     drawPath(path1, color = color, style = Stroke(width = 2f))
 
+    // secondary wave (dimmer, different frequency)
     val path2 = Path()
     for (x in 0..pts) {
         val normX  = x.toFloat() / pts
@@ -164,6 +185,7 @@ private fun DrawScope.drawWave(fft: FloatArray, color: Color, secondary: Color, 
     drawPath(path2, color = secondary.copy(alpha = 0.45f), style = Stroke(width = 1.2f))
 }
 
+// ─── FLAME ───────────────────────────────────────────────────
 private fun DrawScope.drawFlame(fft: FloatArray, accent: Color, secondary: Color) {
     val n    = fft.size
     val gap  = size.width * 0.015f
@@ -172,18 +194,23 @@ private fun DrawScope.drawFlame(fft: FloatArray, accent: Color, secondary: Color
         val h    = amp * size.height * 0.92f
         val left = i * (barW + gap)
         val top  = size.height - h
+        // base flame (red)
         drawRect(color = secondary.copy(alpha = 0.85f), topLeft = Offset(left, top), size = Size(barW, h))
+        // mid flame (yellow-accent)
         drawRect(color = accent.copy(alpha = 0.7f), topLeft = Offset(left, top + h * 0.3f), size = Size(barW, h * 0.7f))
+        // hot core (accent bright)
         drawRect(color = accent.copy(alpha = 0.95f), topLeft = Offset(left, top + h * 0.65f), size = Size(barW, h * 0.35f))
     }
 }
 
+// ─── SCATTER ─────────────────────────────────────────────────
 private fun DrawScope.drawScatter(fft: FloatArray, color: Color) {
     val total = 60
     repeat(total) { i ->
         val normI = i.toFloat() / total
         val band  = (normI * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
         val amp   = fft[band]
+        // pseudo-random but stable layout based on index
         val x     = ((i * 137.508f) % size.width)
         val y     = size.height - ((i * 97.3f + amp * size.height * 0.8f) % size.height)
         val r     = (2f + amp * 5f)

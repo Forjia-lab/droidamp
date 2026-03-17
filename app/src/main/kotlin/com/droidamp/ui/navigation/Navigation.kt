@@ -101,19 +101,16 @@ fun DroidampNavGraph(
         ) {
             composable(Screen.Player.route) {
                 PlayerScreen(
-                    viewModel          = playerViewModel,
-                    themeViewModel     = themeViewModel,
-                    onNavigateToLibrary  = { navigateTo(Screen.Library.route) },
-                    onNavigateToSettings = { navigateTo(Screen.Settings.route) },
+                    viewModel           = playerViewModel,
+                    onNavigateToLibrary = { navigateTo(Screen.Library.route) },
                 )
             }
             composable(Screen.Library.route) {
                 val libraryViewModel: LibraryViewModel = hiltViewModel()
                 LibraryScreen(
-                    libraryViewModel   = libraryViewModel,
-                    playerViewModel    = playerViewModel,
-                    themeViewModel     = themeViewModel,
-                    onNavigateToPlayer = { navigateTo(Screen.Player.route) },
+                    libraryViewModel = libraryViewModel,
+                    playerViewModel  = playerViewModel,
+                    onNavigateBack   = { navigateTo(Screen.Player.route) },
                 )
             }
             composable(Screen.Search.route) {

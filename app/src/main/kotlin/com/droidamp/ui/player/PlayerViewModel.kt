@@ -3,7 +3,6 @@ package com.droidamp.ui.player
 import android.content.ComponentName
 import android.content.Context
 import android.media.audiofx.Visualizer
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -172,32 +171,11 @@ class PlayerViewModel @Inject constructor(
 
     // ── Android Visualizer API / FFT ──────────────────────────
 
-    /** Called by PlayerScreen once RECORD_AUDIO is granted. */
-    fun onPermissionGranted() {
-        if (_playerState.value.isPlaying) attachVisualizer()
-    }
-
-    // onIsPlayingChanged(true) races with onAudioSessionIdChanged in the service because
-    // they are dispatched on different threads. We poll until the session ID is non-zero
-    // (ExoPlayer allocates the AudioTrack shortly after playback begins, typically <500 ms).
     private fun attachVisualizer() {
         detachVisualizer()
-        viewModelScope.launch {
-            var sessionId = DroidampPlaybackService.audioSessionId
-            var waited = 0
-            while (sessionId == 0 && waited < 3000) {
-                delay(100)
-                waited += 100
-                sessionId = DroidampPlaybackService.audioSessionId
-            }
-            Log.d("Droidamp", "attachVisualizer: sessionId=$sessionId after ${waited}ms wait")
-            doAttachVisualizer(sessionId)
-        }
-    }
-
-    private fun doAttachVisualizer(sessionId: Int) {
+        val audioSessionId = com.droidamp.service.DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
         try {
-            visualizer = Visualizer(sessionId).apply {
+            visualizer = Visualizer(audioSessionId).apply {
                 captureSize = Visualizer.getCaptureSizeRange()[1]
                 setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                     override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, sampleRate: Int) {}
@@ -207,9 +185,8 @@ class PlayerViewModel @Inject constructor(
                 }, Visualizer.getMaxCaptureRate() / 2, false, true)
                 enabled = true
             }
-            Log.d("Droidamp", "Visualizer attached OK (sessionId=$sessionId)")
         } catch (e: Exception) {
-            Log.e("Droidamp", "Visualizer init failed (sessionId=$sessionId): ${e.javaClass.simpleName}: ${e.message}")
+            // Visualizer requires RECORD_AUDIO; gracefully degrade if denied
         }
     }
 
@@ -221,20 +198,16 @@ class PlayerViewModel @Inject constructor(
 
     private fun processFft(fft: ByteArray) {
         val bands = 20
-        // fft[0] is DC offset (always huge) — skip it, start from index 1
-        val usable     = fft.size / 2 - 1
-        val bucketSize = usable / bands
+        val bucketSize = (fft.size / 2) / bands
         val result = FloatArray(bands) { b ->
-            val start = 1 + b * bucketSize
+            val start = b * bucketSize
             val end   = start + bucketSize
             val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
             rms.coerceIn(0f, 1f)
         }
-        // smooth with previous frame, then scale up so low-level signals are visible
+        // smooth with previous frame
         val prev = _fftData.value
-        val smoothed = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
-        val scaledFft = FloatArray(smoothed.size) { i -> (smoothed[i] * 2f).coerceAtMost(1f) }
-        _fftData.value = scaledFft
+        _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
     }
 
     override fun onCleared() {
