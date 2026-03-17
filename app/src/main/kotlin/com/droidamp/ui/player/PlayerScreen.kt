@@ -421,6 +421,7 @@ private fun TransportRow(
     onShuffle:   () -> Unit,
     onQueue:     () -> Unit,
 ) {
+    val pillShape = RoundedCornerShape(6.dp)
     Row(
         modifier              = Modifier
             .fillMaxWidth()
@@ -429,13 +430,34 @@ private fun TransportRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
-        Text(
-            text     = "⇄",
-            color    = if (playerState.isShuffled) theme.accent else theme.fg2,
-            fontSize = 18.sp,
-            modifier = Modifier.clickable(onClick = onShuffle),
-        )
-        Text("◀◀", color = theme.fg, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onPrev))
+        // Shuffle
+        Box(
+            modifier         = Modifier
+                .clip(pillShape)
+                .background(theme.surface)
+                .clickable(onClick = onShuffle)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text     = "⇄",
+                color    = if (playerState.isShuffled) theme.accent else theme.fg2,
+                fontSize = 18.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        // Prev
+        Box(
+            modifier         = Modifier
+                .clip(pillShape)
+                .background(theme.surface)
+                .clickable(onClick = onPrev)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("◀◀", color = theme.fg, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
+        }
+        // Play/Pause — circle, larger
         Box(
             modifier         = Modifier
                 .size(56.dp)
@@ -445,14 +467,36 @@ private fun TransportRow(
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
+            // \uFE0E = text variation selector — forces text rendering so color is respected
             Text(
-                text     = if (playerState.isPlaying) "⏸" else "▶",
-                color    = theme.accent,
-                fontSize = 24.sp,
+                text       = if (playerState.isPlaying) "⏸\uFE0E" else "▶\uFE0E",
+                color      = theme.accent,
+                fontSize   = 24.sp,
+                fontFamily = FontFamily.Monospace,
             )
         }
-        Text("▶▶", color = theme.fg, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onNext))
-        Text("☰", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onQueue))
+        // Next
+        Box(
+            modifier         = Modifier
+                .clip(pillShape)
+                .background(theme.surface)
+                .clickable(onClick = onNext)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("▶▶", color = theme.fg, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
+        }
+        // Queue
+        Box(
+            modifier         = Modifier
+                .clip(pillShape)
+                .background(theme.surface)
+                .clickable(onClick = onQueue)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("☰", color = theme.fg2, fontSize = 18.sp, fontFamily = FontFamily.Monospace)
+        }
     }
 }
 
