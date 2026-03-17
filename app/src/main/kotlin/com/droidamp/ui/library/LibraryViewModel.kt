@@ -17,6 +17,7 @@ import javax.inject.Inject
 // ─────────────────────────────────────────────────────────────
 
 sealed class LibraryTab { object Artists : LibraryTab(); object Albums : LibraryTab(); object Tracks : LibraryTab(); object Playlists : LibraryTab() }
+enum class LocalLibraryTab { Albums, Artists, Tracks }
 
 data class LibraryUiState(
     val tab: LibraryTab             = LibraryTab.Albums,
@@ -32,8 +33,19 @@ data class LibraryUiState(
     val selectedPlaylistTracks: List<Track> = emptyList(),
     val isLoading: Boolean          = false,
     val error: String?              = null,
+    // ── Local storage ─────────────────────────────────────────
     val localTrackCount: Int        = 0,
     val localHasPermission: Boolean = false,
+    val isLocalScanning: Boolean    = false,
+    val localAlbums: List<Album>    = emptyList(),
+    val localArtists: List<Artist>  = emptyList(),
+    val localAllTracks: List<Track> = emptyList(),
+    // Local drill-down (kept separate from Navidrome drill-down)
+    val localLibraryTab: LocalLibraryTab        = LocalLibraryTab.Albums,
+    val localSelectedAlbum: Album?              = null,
+    val localSelectedAlbumTracks: List<Track>   = emptyList(),
+    val localSelectedArtist: Artist?            = null,
+    val localSelectedArtistAlbums: List<Album>  = emptyList(),
 )
 
 @HiltViewModel
@@ -111,14 +123,24 @@ class LibraryViewModel @Inject constructor(
     fun clearArtistSelection() { _uiState.update { it.copy(selectedArtist = null, selectedArtistAlbums = emptyList()) } }
 
     fun scanLocalMedia() {
+        _uiState.update { it.copy(isLocalScanning = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val hasPermission = localRepo.hasPermission()
             if (hasPermission) {
-                val tracks = localRepo.scanTracks()
+                val tracks  = localRepo.scanTracks()
+                val albums  = localRepo.albumsFromTracks(tracks)
+                val artists = localRepo.artistsFromTracks(tracks)
                 localTracks = tracks
-                _uiState.update { it.copy(localTrackCount = tracks.size, localHasPermission = true) }
+                _uiState.update { it.copy(
+                    localHasPermission = true,
+                    isLocalScanning    = false,
+                    localTrackCount    = tracks.size,
+                    localAllTracks     = tracks,
+                    localAlbums        = albums,
+                    localArtists       = artists,
+                ) }
             } else {
-                _uiState.update { it.copy(localHasPermission = false) }
+                _uiState.update { it.copy(localHasPermission = false, isLocalScanning = false) }
             }
         }
     }
@@ -126,6 +148,34 @@ class LibraryViewModel @Inject constructor(
     fun refreshLocalPermission() {
         _uiState.update { it.copy(localHasPermission = localRepo.hasPermission()) }
         if (localRepo.hasPermission()) scanLocalMedia()
+    }
+
+    fun setLocalLibraryTab(tab: LocalLibraryTab) {
+        _uiState.update { it.copy(localLibraryTab = tab) }
+    }
+
+    fun loadLocalAlbumTracks(album: Album) {
+        _uiState.update { it.copy(localSelectedAlbum = album, localSelectedAlbumTracks = emptyList(), isLocalScanning = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val tracks = localRepo.tracksForAlbum(album.id, localTracks)
+            _uiState.update { it.copy(localSelectedAlbumTracks = tracks, isLocalScanning = false) }
+        }
+    }
+
+    fun clearLocalAlbumSelection() {
+        _uiState.update { it.copy(localSelectedAlbum = null, localSelectedAlbumTracks = emptyList()) }
+    }
+
+    fun loadLocalArtistAlbums(artist: Artist) {
+        _uiState.update { it.copy(localSelectedArtist = artist, localSelectedArtistAlbums = emptyList(), isLocalScanning = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val albums = localRepo.albumsForArtist(artist.id, localTracks)
+            _uiState.update { it.copy(localSelectedArtistAlbums = albums, isLocalScanning = false) }
+        }
+    }
+
+    fun clearLocalArtistSelection() {
+        _uiState.update { it.copy(localSelectedArtist = null, localSelectedArtistAlbums = emptyList()) }
     }
 
     fun loadPlaylistTracks(playlist: Playlist) {
