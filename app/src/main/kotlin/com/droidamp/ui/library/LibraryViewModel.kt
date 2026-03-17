@@ -3,9 +3,11 @@ package com.droidamp.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.droidamp.data.api.ServerUrlProvider
+import com.droidamp.data.local.LocalMediaRepository
 import com.droidamp.data.repository.NavidromeRepository
 import com.droidamp.domain.model.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,13 +32,19 @@ data class LibraryUiState(
     val selectedPlaylistTracks: List<Track> = emptyList(),
     val isLoading: Boolean          = false,
     val error: String?              = null,
+    val localTrackCount: Int        = 0,
+    val localHasPermission: Boolean = false,
 )
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val repo: NavidromeRepository,
     private val serverUrlProvider: ServerUrlProvider,
+    private val localRepo: LocalMediaRepository,
 ) : ViewModel() {
+
+    // Cache of locally-scanned tracks for ID-based lookups
+    private var localTracks: List<Track> = emptyList()
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -62,12 +70,19 @@ class LibraryViewModel @Inject constructor(
 
     fun loadAlbumTracks(album: Album) {
         _uiState.update { it.copy(selectedAlbum = album, isLoading = true) }
-        viewModelScope.launch {
-            repo.getAlbumTracks(album.id).collect { result ->
-                result.fold(
-                    onSuccess = { tracks -> _uiState.update { it.copy(selectedAlbumTracks = tracks, isLoading = false) } },
-                    onFailure = { e   -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
-                )
+        if (album.id.startsWith("local_album:")) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val tracks = localRepo.tracksForAlbum(album.id, localTracks)
+                _uiState.update { it.copy(selectedAlbumTracks = tracks, isLoading = false) }
+            }
+        } else {
+            viewModelScope.launch {
+                repo.getAlbumTracks(album.id).collect { result ->
+                    result.fold(
+                        onSuccess = { tracks -> _uiState.update { it.copy(selectedAlbumTracks = tracks, isLoading = false) } },
+                        onFailure = { e   -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
+                    )
+                }
             }
         }
     }
@@ -76,17 +91,42 @@ class LibraryViewModel @Inject constructor(
 
     fun loadArtistAlbums(artist: Artist) {
         _uiState.update { it.copy(selectedArtist = artist, isLoading = true) }
-        viewModelScope.launch {
-            repo.getArtistAlbums(artist.id).collect { result ->
-                result.fold(
-                    onSuccess = { albums -> _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) } },
-                    onFailure = { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
-                )
+        if (artist.id.startsWith("local_artist:")) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val albums = localRepo.albumsForArtist(artist.id, localTracks)
+                _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) }
+            }
+        } else {
+            viewModelScope.launch {
+                repo.getArtistAlbums(artist.id).collect { result ->
+                    result.fold(
+                        onSuccess = { albums -> _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) } },
+                        onFailure = { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
+                    )
+                }
             }
         }
     }
 
     fun clearArtistSelection() { _uiState.update { it.copy(selectedArtist = null, selectedArtistAlbums = emptyList()) } }
+
+    fun scanLocalMedia() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val hasPermission = localRepo.hasPermission()
+            if (hasPermission) {
+                val tracks = localRepo.scanTracks()
+                localTracks = tracks
+                _uiState.update { it.copy(localTrackCount = tracks.size, localHasPermission = true) }
+            } else {
+                _uiState.update { it.copy(localHasPermission = false) }
+            }
+        }
+    }
+
+    fun refreshLocalPermission() {
+        _uiState.update { it.copy(localHasPermission = localRepo.hasPermission()) }
+        if (localRepo.hasPermission()) scanLocalMedia()
+    }
 
     fun loadPlaylistTracks(playlist: Playlist) {
         _uiState.update { it.copy(selectedPlaylist = playlist, isLoading = true) }

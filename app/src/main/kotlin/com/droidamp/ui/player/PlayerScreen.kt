@@ -49,7 +49,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
+import com.droidamp.data.local.LocalMediaRepository
 import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.PlayerState
 import com.droidamp.domain.model.Track
@@ -225,7 +229,7 @@ fun PlayerScreen(
                 when (tab) {
                     PlayerTab.QUEUE   -> PlaylistTab(playerState, theme) { playerViewModel.seekToQueueItem(it) }
                     PlayerTab.LIBRARY -> LibraryTabContent(libraryViewModel, playerViewModel, theme)
-                    PlayerTab.SOURCES -> SourcesTab(settingsViewModel, theme)
+                    PlayerTab.SOURCES -> SourcesTab(settingsViewModel, libraryViewModel, theme)
                     PlayerTab.SEARCH  -> SearchTabContent(
                         searchViewModel = searchViewModel,
                         playerViewModel = playerViewModel,
@@ -1203,14 +1207,27 @@ private fun LibraryAlbumTracks(album: Album, tracks: List<Track>, theme: DroidTh
 // ─── SOURCES tab ─────────────────────────────────────────────
 
 @Composable
-private fun SourcesTab(settingsViewModel: SettingsViewModel, theme: DroidTheme) {
+private fun SourcesTab(
+    settingsViewModel: SettingsViewModel,
+    libraryViewModel:  LibraryViewModel,
+    theme:             DroidTheme,
+) {
     val url        by settingsViewModel.url.collectAsState()
     val pingStatus by settingsViewModel.pingStatus.collectAsState()
+    val libState   by libraryViewModel.uiState.collectAsState()
 
     val isConnected = pingStatus?.startsWith("✓") == true
     val isPending   = pingStatus == "connecting…"
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) libraryViewModel.scanLocalMedia()
+        else libraryViewModel.refreshLocalPermission()
+    }
+
     LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // ── Navidrome row ─────────────────────────────────────
         item {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -1230,6 +1247,43 @@ private fun SourcesTab(settingsViewModel: SettingsViewModel, theme: DroidTheme) 
             }
             HorizontalDivider(color = theme.border, thickness = 0.5.dp)
         }
+        // ── Local Storage row ─────────────────────────────────
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (libState.localHasPermission) {
+                            libraryViewModel.scanLocalMedia()
+                        } else {
+                            permissionLauncher.launch(LocalMediaRepository.REQUIRED_PERMISSION)
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(
+                    if (libState.localHasPermission) theme.green else theme.fg2.copy(alpha = 0.3f)
+                ))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Local Storage", color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (libState.localHasPermission)
+                            if (libState.localTrackCount > 0) "${libState.localTrackCount} tracks on device" else "tap to scan"
+                        else
+                            "tap to grant permission",
+                        color = theme.fg2,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                Text("LOCAL", color = theme.accent.copy(alpha = 0.7f), fontSize = 8.sp, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.background(theme.accent.copy(alpha = 0.08f), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp))
+            }
+            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
+        }
+        // ── Placeholder rows ──────────────────────────────────
         listOf("SoundCloud" to "SC", "Bandcamp" to "BC", "Internet Radio" to "RADIO").forEach { (name, badge) ->
             item {
                 Row(
