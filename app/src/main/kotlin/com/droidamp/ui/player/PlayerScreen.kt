@@ -419,16 +419,16 @@ private fun TransportRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
-        // Shuffle
+        // Shuffle — muted, accent when active
         Text(
             text     = "⇄",
             color    = if (playerState.isShuffled) theme.accent else theme.fg2,
-            fontSize = 20.sp,
+            fontSize = 16.sp,
             modifier = Modifier.clickable(onClick = onShuffle),
         )
 
         // Prev
-        Text("⏮", color = theme.fg, fontSize = 24.sp, modifier = Modifier.clickable(onClick = onPrev))
+        Text("⏮", color = theme.fg, fontSize = 22.sp, modifier = Modifier.clickable(onClick = onPrev))
 
         // Play / Pause
         Box(
@@ -447,10 +447,10 @@ private fun TransportRow(
         }
 
         // Next
-        Text("⏭", color = theme.fg, fontSize = 24.sp, modifier = Modifier.clickable(onClick = onNext))
+        Text("⏭", color = theme.fg, fontSize = 22.sp, modifier = Modifier.clickable(onClick = onNext))
 
-        // Queue
-        Text("☰", color = theme.fg2, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onQueue))
+        // Queue — muted
+        Text("☰", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onQueue))
     }
 }
 
