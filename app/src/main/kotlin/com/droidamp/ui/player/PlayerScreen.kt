@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -454,94 +456,79 @@ private fun TransportRow(
     onShuffle:   () -> Unit,
     onQueue:     () -> Unit,
 ) {
-    val pillShape = RoundedCornerShape(6.dp)
+    val btnShape = RoundedCornerShape(8.dp)
+
+    @Composable
+    fun HwButton(
+        onClick:     () -> Unit,
+        borderColor: androidx.compose.ui.graphics.Color = theme.border,
+        bgColor:     androidx.compose.ui.graphics.Color = theme.surface,
+        content:     @Composable () -> Unit,
+    ) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val isPressed by interactionSource.collectIsPressedAsState()
+        Box(
+            modifier = Modifier
+                .size(width = 52.dp, height = 44.dp)
+                .clip(btnShape)
+                .background(if (isPressed) theme.panel else bgColor)
+                .border(1.dp, borderColor, btnShape)
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) { content() }
+    }
+
     Row(
         modifier              = Modifier
             .fillMaxWidth()
             .height(64.dp)
-            .padding(horizontal = 20.dp),
+            .background(theme.bg)
+            .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
         // Shuffle
-        Box(
-            modifier         = Modifier
-                .clip(pillShape)
-                .background(theme.surface)
-                .clickable(onClick = onShuffle)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
+        HwButton(
+            onClick     = onShuffle,
+            borderColor = if (playerState.isShuffled) theme.accent else theme.border,
         ) {
-            Text(
-                text     = "⇄",
-                color    = if (playerState.isShuffled) theme.accent else theme.fg2,
-                fontSize = 18.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+            Text("⇄", color = if (playerState.isShuffled) theme.accent else theme.fg,
+                fontSize = 18.sp, fontFamily = FontFamily.Monospace)
         }
         // Prev
-        Box(
-            modifier         = Modifier
-                .clip(pillShape)
-                .background(theme.surface)
-                .clickable(onClick = onPrev)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("◀◀", color = theme.fg, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
+        HwButton(onClick = onPrev) {
+            Text("◀◀", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
-        // Play/Pause — circle, larger
-        Box(
-            modifier         = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(theme.playBg)
-                .border(1.dp, theme.playBorder, CircleShape)
-                .clickable(onClick = onPlayPause),
-            contentAlignment = Alignment.Center,
+        // Play/Pause
+        HwButton(
+            onClick     = onPlayPause,
+            bgColor     = theme.playBg,
+            borderColor = theme.playBorder,
         ) {
             if (playerState.isPlaying) {
-                // Canvas-drawn pause bars — bypasses Android emoji color override entirely
                 val accentColor = theme.accent
-                Canvas(modifier = Modifier.size(18.dp)) {
+                Canvas(modifier = Modifier.size(16.dp)) {
                     val barW = size.width * 0.28f
                     val barH = size.height * 0.75f
                     val top  = (size.height - barH) / 2f
-                    drawRect(color = accentColor, topLeft = androidx.compose.ui.geometry.Offset(0f, top),
-                        size = androidx.compose.ui.geometry.Size(barW, barH))
-                    drawRect(color = accentColor, topLeft = androidx.compose.ui.geometry.Offset(size.width - barW, top),
-                        size = androidx.compose.ui.geometry.Size(barW, barH))
+                    drawRect(color = accentColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, top),
+                        size    = androidx.compose.ui.geometry.Size(barW, barH))
+                    drawRect(color = accentColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(size.width - barW, top),
+                        size    = androidx.compose.ui.geometry.Size(barW, barH))
                 }
             } else {
-                Text(
-                    text       = "▶\uFE0E",
-                    color      = theme.accent,
-                    fontSize   = 24.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
+                Text("▶\uFE0E", color = theme.accent, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
             }
         }
         // Next
-        Box(
-            modifier         = Modifier
-                .clip(pillShape)
-                .background(theme.surface)
-                .clickable(onClick = onNext)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("▶▶", color = theme.fg, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
+        HwButton(onClick = onNext) {
+            Text("▶▶", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
         // Queue
-        Box(
-            modifier         = Modifier
-                .clip(pillShape)
-                .background(theme.surface)
-                .clickable(onClick = onQueue)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("☰", color = theme.fg2, fontSize = 18.sp, fontFamily = FontFamily.Monospace)
+        HwButton(onClick = onQueue) {
+            Text("☰", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -655,9 +642,17 @@ private fun EqBandColumn(
                     }
                 },
         ) {
+            // Background
             drawRect(color = theme.surface)
             val centerY = size.height / 2f
-            drawLine(color = theme.border, start = Offset(0f, centerY), end = Offset(size.width, centerY), strokeWidth = 1f)
+            // Always-visible center tick in eqBar so bars look themed even at 0dB
+            drawLine(
+                color       = theme.eqBar.copy(alpha = 0.35f),
+                start       = Offset(0f, centerY),
+                end         = Offset(size.width, centerY),
+                strokeWidth = 2f,
+            )
+            // Active bar (eqBar color)
             val barTop: Float
             val barBottom: Float
             if (normalized >= 0.5f) {
