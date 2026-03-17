@@ -40,7 +40,7 @@ object DroidThemes {
         border = Color(0xFF585B70), accent = Color(0xFFCBA6F7), fg = Color(0xFFCDD6F4),
         fg2 = Color(0xFFA6ADC8), green = Color(0xFFA6E3A1), yellow = Color(0xFFF9E2AF),
         red = Color(0xFFEB6F92), vizBar = Color(0xFFCBA6F7), eqBar = Color(0xFF89DCEB),
-        volBar = Color(0xFF89B4FA), playBg = Color(0xFF313244), playBorder = Color(0xFFCBA6F7),
+        volBar = Color(0xFF89B4FA), playBg = Color(0xFF2A1A3A), playBorder = Color(0xFFCBA6F7),
     )
 
     val CatppuccinLatte = DroidTheme(

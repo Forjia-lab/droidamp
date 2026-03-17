@@ -432,15 +432,16 @@ private fun TransportRow(
         Text(
             text     = "⇄",
             color    = if (playerState.isShuffled) theme.accent else theme.fg2,
-            fontSize = 16.sp,
+            fontSize = 18.sp,
             modifier = Modifier.clickable(onClick = onShuffle),
         )
-        Text("⏮", color = theme.fg, fontSize = 22.sp, modifier = Modifier.clickable(onClick = onPrev))
+        Text("◀◀", color = theme.fg, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onPrev))
         Box(
             modifier         = Modifier
-                .size(52.dp)
+                .size(56.dp)
                 .clip(CircleShape)
                 .background(theme.playBg)
+                .border(1.dp, theme.playBorder, CircleShape)
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center,
         ) {
@@ -450,8 +451,8 @@ private fun TransportRow(
                 fontSize = 24.sp,
             )
         }
-        Text("⏭", color = theme.fg, fontSize = 22.sp, modifier = Modifier.clickable(onClick = onNext))
-        Text("☰", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onQueue))
+        Text("▶▶", color = theme.fg, fontSize = 20.sp, modifier = Modifier.clickable(onClick = onNext))
+        Text("☰", color = theme.fg2, fontSize = 18.sp, modifier = Modifier.clickable(onClick = onQueue))
     }
 }
 
