@@ -118,6 +118,7 @@ fun DroidampNavGraph(
                 LibraryScreen(
                     libraryViewModel = libraryViewModel,
                     playerViewModel  = playerViewModel,
+                    themeViewModel   = themeViewModel,
                     onNavigateBack   = { navigateTo(Screen.Play.route) },
                 )
             }
@@ -126,6 +127,7 @@ fun DroidampNavGraph(
                 LibraryScreen(
                     libraryViewModel = libraryViewModel,
                     playerViewModel  = playerViewModel,
+                    themeViewModel   = themeViewModel,
                     onNavigateBack   = { navigateTo(Screen.Play.route) },
                 )
             }

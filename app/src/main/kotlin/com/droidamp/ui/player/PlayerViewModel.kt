@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.ln
 import kotlin.math.sqrt
 
 data class EqBand(
@@ -276,8 +277,9 @@ class PlayerViewModel @Inject constructor(
         val result = FloatArray(bands) { b ->
             val start = b * bucketSize
             val end   = (start + bucketSize).coerceAtMost(usableFft.size)
-            val rms   = sqrt(usableFft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
-            (rms * 5f).coerceIn(0f, 1f)
+            val rms    = sqrt(usableFft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
+            val logged = (ln(1f + rms * 10f) / ln(11f)).coerceAtMost(1f)
+            (logged * 5f).coerceAtMost(1f)
         }
         val prev = _fftData.value
         _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }

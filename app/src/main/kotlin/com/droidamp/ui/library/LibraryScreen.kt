@@ -22,7 +22,7 @@ import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Track
 import com.droidamp.ui.components.MiniPlayerBar
 import com.droidamp.ui.player.PlayerViewModel
-import com.droidamp.ui.theme.DroidThemes
+import com.droidamp.ui.theme.ThemeViewModel
 
 // ─────────────────────────────────────────────────────────────
 //  LibraryScreen — browse your Navidrome library.
@@ -34,12 +34,13 @@ import com.droidamp.ui.theme.DroidThemes
 @Composable
 fun LibraryScreen(
     libraryViewModel: LibraryViewModel,
-    playerViewModel: PlayerViewModel,
-    onNavigateBack: () -> Unit,
+    playerViewModel:  PlayerViewModel,
+    themeViewModel:   ThemeViewModel,
+    onNavigateBack:   () -> Unit,
 ) {
     val uiState     by libraryViewModel.uiState.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
-    val theme       = DroidThemes.Catppuccin  // TODO: wire up shared theme state
+    val theme       by themeViewModel.theme.collectAsState()
 
     Column(
         modifier = Modifier
