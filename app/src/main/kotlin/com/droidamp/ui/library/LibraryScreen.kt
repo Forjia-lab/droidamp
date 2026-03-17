@@ -69,14 +69,13 @@ fun LibraryScreen(
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f),
             )
-            if (uiState.selectedAlbum != null) {
-                Text(
-                    text = "← Back",
-                    color = theme.fg2,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { libraryViewModel.clearAlbumSelection() },
-                )
+            when {
+                uiState.selectedAlbum != null ->
+                    Text("← Back", color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { libraryViewModel.clearAlbumSelection() })
+                uiState.selectedArtist != null ->
+                    Text("← Back", color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { libraryViewModel.clearArtistSelection() })
             }
         }
 
@@ -128,10 +127,17 @@ fun LibraryScreen(
                         },
                     )
                 }
+                uiState.selectedArtist != null -> {
+                    AlbumGrid(
+                        albums       = uiState.selectedArtistAlbums,
+                        theme        = theme,
+                        onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
+                    )
+                }
                 uiState.tab is LibraryTab.Albums -> {
                     AlbumGrid(
-                        albums = uiState.albums,
-                        theme  = theme,
+                        albums       = uiState.albums,
+                        theme        = theme,
                         onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
                     )
                 }
@@ -141,15 +147,16 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { /* load artist albums */ }
+                                    .clickable { libraryViewModel.loadArtistAlbums(artist) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                Column {
+                                Column(Modifier.weight(1f)) {
                                     Text(artist.name, color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                                     Text("${artist.albumCount} albums", color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                 }
+                                Text("›", color = theme.fg2, fontSize = 14.sp)
                             }
                             Divider(color = theme.border, thickness = 0.5.dp)
                         }

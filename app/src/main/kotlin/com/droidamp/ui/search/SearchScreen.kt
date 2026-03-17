@@ -5,6 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Track
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidTheme
@@ -59,14 +63,13 @@ fun SearchScreen(
                 fontFamily = FontFamily.Monospace,
                 modifier   = Modifier.weight(1f),
             )
-            if (uiState.selectedAlbum != null) {
-                Text(
-                    text       = "← Back",
-                    color      = theme.fg2,
-                    fontSize   = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier   = Modifier.clickable { viewModel.clearAlbumSelection() },
-                )
+            when {
+                uiState.selectedAlbum != null ->
+                    Text("← Back", color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { viewModel.clearAlbumSelection() })
+                uiState.selectedArtist != null ->
+                    Text("← Back", color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable { viewModel.clearArtistSelection() })
             }
         }
 
@@ -132,14 +135,22 @@ fun SearchScreen(
         when {
             uiState.selectedAlbum != null -> {
                 SearchAlbumTrackList(
-                    album       = uiState.selectedAlbum!!,
-                    tracks      = uiState.selectedAlbumTracks,
-                    isLoading   = uiState.isLoadingTracks,
-                    theme       = theme,
+                    album        = uiState.selectedAlbum!!,
+                    tracks       = uiState.selectedAlbumTracks,
+                    isLoading    = uiState.isLoadingTracks,
+                    theme        = theme,
                     onTrackClick = { idx ->
                         playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
                         onNavigateToPlayer()
                     },
+                )
+            }
+            uiState.selectedArtist != null -> {
+                SearchArtistAlbumGrid(
+                    albums       = uiState.selectedArtistAlbums,
+                    isLoading    = uiState.isLoadingTracks,
+                    theme        = theme,
+                    onAlbumClick = { viewModel.loadAlbumTracks(it) },
                 )
             }
             uiState.isLoading -> {
@@ -165,14 +176,16 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { viewModel.loadArtistAlbums(artist) }
                                     .padding(horizontal = 16.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                Column {
+                                Column(Modifier.weight(1f)) {
                                     Text(artist.name, color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text("${artist.albumCount} albums", color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                 }
+                                Text("›", color = theme.fg2, fontSize = 16.sp)
                             }
                             Divider(color = theme.border, thickness = 0.5.dp)
                         }
@@ -238,6 +251,54 @@ fun SearchScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchArtistAlbumGrid(
+    albums:       List<Album>,
+    isLoading:    Boolean,
+    theme:        DroidTheme,
+    onAlbumClick: (Album) -> Unit,
+) {
+    if (isLoading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = theme.accent)
+        }
+        return
+    }
+    LazyVerticalGrid(
+        columns               = GridCells.Fixed(2),
+        contentPadding        = PaddingValues(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement   = Arrangement.spacedBy(8.dp),
+        modifier              = Modifier.fillMaxSize(),
+    ) {
+        gridItems(albums) { album ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(theme.panel)
+                    .clickable { onAlbumClick(album) }
+                    .padding(bottom = 8.dp),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).background(theme.surface),
+                ) {
+                    if (album.coverArtId != null) {
+                        AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
+                    } else {
+                        Text("♫", color = theme.accent, fontSize = 28.sp, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(album.name, color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
+                Text(album.artist, color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
             }
         }
     }
