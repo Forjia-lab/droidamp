@@ -2,6 +2,7 @@ package com.droidamp.ui.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.media.audiofx.Equalizer
 import android.media.audiofx.Visualizer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,8 +26,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.abs
 import kotlin.math.sqrt
+
+data class EqBand(
+    val index: Int,
+    val centerFreqHz: Int,  // Hz (already divided from millihertz)
+    val level: Short,       // millibels
+    val minLevel: Short,
+    val maxLevel: Short,
+)
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -47,9 +55,18 @@ class PlayerViewModel @Inject constructor(
     private val _isVizFullScreen = MutableStateFlow(false)
     val isVizFullScreen: StateFlow<Boolean> = _isVizFullScreen.asStateFlow()
 
-    // ── MediaController ───────────────────────────────────────
+    // ── EQ ────────────────────────────────────────────────────
+    private val _eqBands = MutableStateFlow<List<EqBand>>(emptyList())
+    val eqBands: StateFlow<List<EqBand>> = _eqBands.asStateFlow()
+
+    // ── Favorites (in-memory) ─────────────────────────────────
+    private val _starredIds = MutableStateFlow<Set<String>>(emptySet())
+    val starredIds: StateFlow<Set<String>> = _starredIds.asStateFlow()
+
+    // ── MediaController / effects ─────────────────────────────
     private var controller: MediaController? = null
     private var visualizer: Visualizer? = null
+    private var equalizer: Equalizer? = null
 
     init {
         connectToService()
@@ -71,11 +88,9 @@ class PlayerViewModel @Inject constructor(
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _playerState.update { it.copy(isPlaying = isPlaying) }
-            if (isPlaying) attachVisualizer() else detachVisualizer()
+            if (isPlaying) attachAudioEffects() else detachAudioEffects()
         }
-        override fun onMediaMetadataChanged(metadata: MediaMetadata) {
-            // sync current track info from MediaItem extras if needed
-        }
+        override fun onMediaMetadataChanged(metadata: MediaMetadata) {}
         override fun onRepeatModeChanged(repeatMode: Int) {
             _playerState.update {
                 it.copy(repeatMode = when (repeatMode) {
@@ -138,6 +153,14 @@ class PlayerViewModel @Inject constructor(
 
     fun seekTo(positionMs: Long) { controller?.seekTo(positionMs) }
 
+    fun seekToQueueItem(index: Int) {
+        controller?.seekTo(index, 0L)
+        _playerState.update { it.copy(
+            queueIndex = index,
+            currentTrack = it.queue.getOrNull(index),
+        ) }
+    }
+
     fun setVolume(volume: Float) {
         controller?.volume = volume
         _playerState.update { it.copy(volume = volume) }
@@ -162,18 +185,43 @@ class PlayerViewModel @Inject constructor(
         controller?.shuffleModeEnabled = newShuffle
     }
 
+    fun toggleStar(trackId: String) {
+        _starredIds.update { if (it.contains(trackId)) it - trackId else it + trackId }
+    }
+
     // ── Visualizer mode ───────────────────────────────────────
 
-    fun nextVizMode()  { _vizMode.update { it.next() } }
-    fun prevVizMode()  { _vizMode.update { it.prev() } }
+    fun nextVizMode() { _vizMode.update { it.next() } }
+    fun prevVizMode() { _vizMode.update { it.prev() } }
     fun setVizMode(mode: VisualizerMode) { _vizMode.value = mode }
     fun toggleVizFullScreen() { _isVizFullScreen.update { !it } }
 
-    // ── Android Visualizer API / FFT ──────────────────────────
+    // ── EQ ────────────────────────────────────────────────────
+
+    fun setEqBand(bandIndex: Int, level: Short) {
+        try {
+            equalizer?.setBandLevel(bandIndex.toShort(), level)
+            _eqBands.update { bands ->
+                bands.map { if (it.index == bandIndex) it.copy(level = level) else it }
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ── Audio effects ─────────────────────────────────────────
+
+    private fun attachAudioEffects() {
+        attachVisualizer()
+        attachEqualizer()
+    }
+
+    private fun detachAudioEffects() {
+        detachVisualizer()
+        detachEqualizer()
+    }
 
     private fun attachVisualizer() {
         detachVisualizer()
-        val audioSessionId = com.droidamp.service.DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
+        val audioSessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
         try {
             visualizer = Visualizer(audioSessionId).apply {
                 captureSize = Visualizer.getCaptureSizeRange()[1]
@@ -185,15 +233,39 @@ class PlayerViewModel @Inject constructor(
                 }, Visualizer.getMaxCaptureRate() / 2, false, true)
                 enabled = true
             }
-        } catch (e: Exception) {
-            // Visualizer requires RECORD_AUDIO; gracefully degrade if denied
-        }
+        } catch (_: Exception) {}
     }
 
     private fun detachVisualizer() {
         visualizer?.run { enabled = false; release() }
         visualizer = null
         _fftData.value = FloatArray(20) { 0f }
+    }
+
+    private fun attachEqualizer() {
+        detachEqualizer()
+        val audioSessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
+        try {
+            equalizer = Equalizer(0, audioSessionId).apply {
+                enabled = true
+                val range = bandLevelRange
+                val bands = (0 until numberOfBands.toInt()).map { b ->
+                    EqBand(
+                        index        = b,
+                        centerFreqHz = getCenterFreq(b.toShort()) / 1000,
+                        level        = getBandLevel(b.toShort()),
+                        minLevel     = range[0],
+                        maxLevel     = range[1],
+                    )
+                }
+                _eqBands.value = bands
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun detachEqualizer() {
+        equalizer?.run { enabled = false; release() }
+        equalizer = null
     }
 
     private fun processFft(fft: ByteArray) {
@@ -205,13 +277,12 @@ class PlayerViewModel @Inject constructor(
             val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
             rms.coerceIn(0f, 1f)
         }
-        // smooth with previous frame
         val prev = _fftData.value
         _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
     }
 
     override fun onCleared() {
-        detachVisualizer()
+        detachAudioEffects()
         controller?.run { removeListener(playerListener); release() }
         super.onCleared()
     }
