@@ -18,6 +18,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import com.droidamp.ui.library.BrowseMode
 import com.droidamp.ui.library.LibraryScreen
 import com.droidamp.ui.library.LibraryViewModel
 import com.droidamp.ui.player.PlayerScreen
@@ -36,10 +37,11 @@ import com.droidamp.ui.theme.ThemeViewModel
 // ─────────────────────────────────────────────────────────────
 
 sealed class Screen(val route: String, val label: String, val icon: String) {
-    object Play    : Screen("play",    "PLAY",    "▶")
-    object Browse  : Screen("browse",  "BROWSE",  "⊞")
-    object Library : Screen("library", "LIBRARY", "≡")
-    object Search  : Screen("search",  "SEARCH",  "⌕")
+    object Play         : Screen("play",          "PLAY",    "▶")
+    object Browse       : Screen("browse",         "BROWSE",  "⊞")
+    object Library      : Screen("library",        "LIBRARY", "≡")
+    object Search       : Screen("search",         "SEARCH",  "⌕")
+    object LocalLibrary : Screen("local_library",  "",        "")
 }
 
 private val bottomNavScreens = listOf(Screen.Play, Screen.Browse, Screen.Library, Screen.Search)
@@ -108,11 +110,12 @@ fun DroidampNavGraph(
                 val searchViewModel:  SearchViewModel  = hiltViewModel()
                 val settingsViewModel: SettingsViewModel = hiltViewModel()
                 PlayerScreen(
-                    playerViewModel   = playerViewModel,
-                    themeViewModel    = themeViewModel,
-                    libraryViewModel  = libraryViewModel,
-                    searchViewModel   = searchViewModel,
-                    settingsViewModel = settingsViewModel,
+                    playerViewModel          = playerViewModel,
+                    themeViewModel           = themeViewModel,
+                    libraryViewModel         = libraryViewModel,
+                    searchViewModel          = searchViewModel,
+                    settingsViewModel        = settingsViewModel,
+                    onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrary.route) },
                 )
             }
             composable(Screen.Browse.route) {
@@ -121,6 +124,7 @@ fun DroidampNavGraph(
                     libraryViewModel = libraryViewModel,
                     playerViewModel  = playerViewModel,
                     themeViewModel   = themeViewModel,
+                    mode             = BrowseMode.All,
                     onNavigateBack   = { navigateTo(Screen.Play.route) },
                 )
             }
@@ -130,7 +134,18 @@ fun DroidampNavGraph(
                     libraryViewModel = libraryViewModel,
                     playerViewModel  = playerViewModel,
                     themeViewModel   = themeViewModel,
+                    mode             = BrowseMode.Playlists,
                     onNavigateBack   = { navigateTo(Screen.Play.route) },
+                )
+            }
+            composable(Screen.LocalLibrary.route) {
+                val libraryViewModel: LibraryViewModel = hiltViewModel()
+                LibraryScreen(
+                    libraryViewModel = libraryViewModel,
+                    playerViewModel  = playerViewModel,
+                    themeViewModel   = themeViewModel,
+                    mode             = BrowseMode.LocalOnly,
+                    onNavigateBack   = { navController.popBackStack() },
                 )
             }
             composable(Screen.Search.route) {

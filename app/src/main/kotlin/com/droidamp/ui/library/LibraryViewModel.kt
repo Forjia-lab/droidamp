@@ -17,7 +17,7 @@ import javax.inject.Inject
 // ─────────────────────────────────────────────────────────────
 
 sealed class LibraryTab { object Artists : LibraryTab(); object Albums : LibraryTab(); object Tracks : LibraryTab(); object Playlists : LibraryTab() }
-enum class LocalLibraryTab { Albums, Artists, Tracks }
+enum class BrowseTab { Albums, Artists, Tracks }
 
 data class LibraryUiState(
     val tab: LibraryTab             = LibraryTab.Albums,
@@ -40,12 +40,6 @@ data class LibraryUiState(
     val localAlbums: List<Album>    = emptyList(),
     val localArtists: List<Artist>  = emptyList(),
     val localAllTracks: List<Track> = emptyList(),
-    // Local drill-down (kept separate from Navidrome drill-down)
-    val localLibraryTab: LocalLibraryTab        = LocalLibraryTab.Albums,
-    val localSelectedAlbum: Album?              = null,
-    val localSelectedAlbumTracks: List<Track>   = emptyList(),
-    val localSelectedArtist: Artist?            = null,
-    val localSelectedArtistAlbums: List<Album>  = emptyList(),
 )
 
 @HiltViewModel
@@ -78,6 +72,14 @@ class LibraryViewModel @Inject constructor(
             LibraryTab.Playlists -> loadPlaylists()
             LibraryTab.Tracks    -> loadTracks()
         }
+    }
+
+    /** Load all data needed for Browse All mode. */
+    fun loadBrowseData() {
+        loadAlbums()
+        loadArtists()
+        loadTracks()
+        if (localRepo.hasPermission()) scanLocalMedia()
     }
 
     fun loadAlbumTracks(album: Album) {
@@ -150,34 +152,6 @@ class LibraryViewModel @Inject constructor(
         if (localRepo.hasPermission()) scanLocalMedia()
     }
 
-    fun setLocalLibraryTab(tab: LocalLibraryTab) {
-        _uiState.update { it.copy(localLibraryTab = tab) }
-    }
-
-    fun loadLocalAlbumTracks(album: Album) {
-        _uiState.update { it.copy(localSelectedAlbum = album, localSelectedAlbumTracks = emptyList(), isLocalScanning = true) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val tracks = localRepo.tracksForAlbum(album.id, localTracks)
-            _uiState.update { it.copy(localSelectedAlbumTracks = tracks, isLocalScanning = false) }
-        }
-    }
-
-    fun clearLocalAlbumSelection() {
-        _uiState.update { it.copy(localSelectedAlbum = null, localSelectedAlbumTracks = emptyList()) }
-    }
-
-    fun loadLocalArtistAlbums(artist: Artist) {
-        _uiState.update { it.copy(localSelectedArtist = artist, localSelectedArtistAlbums = emptyList(), isLocalScanning = true) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val albums = localRepo.albumsForArtist(artist.id, localTracks)
-            _uiState.update { it.copy(localSelectedArtistAlbums = albums, isLocalScanning = false) }
-        }
-    }
-
-    fun clearLocalArtistSelection() {
-        _uiState.update { it.copy(localSelectedArtist = null, localSelectedArtistAlbums = emptyList()) }
-    }
-
     fun loadPlaylistTracks(playlist: Playlist) {
         _uiState.update { it.copy(selectedPlaylist = playlist, isLoading = true) }
         viewModelScope.launch {
@@ -192,7 +166,7 @@ class LibraryViewModel @Inject constructor(
 
     fun clearPlaylistSelection() { _uiState.update { it.copy(selectedPlaylist = null, selectedPlaylistTracks = emptyList()) } }
 
-    private fun loadTracks() {
+    fun loadTracks() {
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             repo.getRandomTracks().collect { result ->
@@ -204,7 +178,7 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    private fun loadAlbums() {
+    fun loadAlbums() {
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             repo.getAllAlbums().collect { result ->
@@ -216,7 +190,7 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    private fun loadArtists() {
+    fun loadArtists() {
         _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             repo.getArtists().collect { result ->

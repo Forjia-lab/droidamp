@@ -58,9 +58,7 @@ import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.PlayerState
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
-import com.droidamp.ui.library.LibraryUiState
 import com.droidamp.ui.library.LibraryViewModel
-import com.droidamp.ui.library.LocalLibraryTab
 import com.droidamp.ui.search.SearchViewModel
 import com.droidamp.ui.settings.SettingsViewModel
 import com.droidamp.ui.theme.DroidTheme
@@ -77,11 +75,12 @@ enum class PlayerTab { QUEUE, LIBRARY, SOURCES, SEARCH }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
-    playerViewModel:  PlayerViewModel,
-    themeViewModel:   ThemeViewModel,
-    libraryViewModel: LibraryViewModel,
-    searchViewModel:  SearchViewModel,
-    settingsViewModel: SettingsViewModel,
+    playerViewModel:          PlayerViewModel,
+    themeViewModel:           ThemeViewModel,
+    libraryViewModel:         LibraryViewModel,
+    searchViewModel:          SearchViewModel,
+    settingsViewModel:        SettingsViewModel,
+    onNavigateToLocalLibrary: () -> Unit = {},
 ) {
     val theme       by themeViewModel.theme.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
@@ -232,11 +231,12 @@ fun PlayerScreen(
                     PlayerTab.QUEUE   -> PlaylistTab(playerState, theme) { playerViewModel.seekToQueueItem(it) }
                     PlayerTab.LIBRARY -> LibraryTabContent(libraryViewModel, playerViewModel, theme)
                     PlayerTab.SOURCES -> SourcesTab(
-                        settingsViewModel = settingsViewModel,
-                        libraryViewModel  = libraryViewModel,
-                        playerViewModel   = playerViewModel,
-                        theme             = theme,
-                        onTrackPlayed     = { activeTab = PlayerTab.QUEUE },
+                        settingsViewModel        = settingsViewModel,
+                        libraryViewModel         = libraryViewModel,
+                        playerViewModel          = playerViewModel,
+                        theme                    = theme,
+                        onTrackPlayed            = { activeTab = PlayerTab.QUEUE },
+                        onNavigateToLocalLibrary = onNavigateToLocalLibrary,
                     )
                     PlayerTab.SEARCH  -> SearchTabContent(
                         searchViewModel = searchViewModel,
@@ -1216,11 +1216,12 @@ private fun LibraryAlbumTracks(album: Album, tracks: List<Track>, theme: DroidTh
 
 @Composable
 private fun SourcesTab(
-    settingsViewModel: SettingsViewModel,
-    libraryViewModel:  LibraryViewModel,
-    playerViewModel:   PlayerViewModel,
-    theme:             DroidTheme,
-    onTrackPlayed:     () -> Unit,
+    settingsViewModel:        SettingsViewModel,
+    libraryViewModel:         LibraryViewModel,
+    playerViewModel:          PlayerViewModel,
+    theme:                    DroidTheme,
+    onTrackPlayed:            () -> Unit,
+    onNavigateToLocalLibrary: () -> Unit,
 ) {
     val url        by settingsViewModel.url.collectAsState()
     val pingStatus by settingsViewModel.pingStatus.collectAsState()
@@ -1229,35 +1230,11 @@ private fun SourcesTab(
     val isConnected = pingStatus?.startsWith("✓") == true
     val isPending   = pingStatus == "connecting…"
 
-    var localLibraryOpen by remember { mutableStateOf(false) }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            libraryViewModel.scanLocalMedia()
-            localLibraryOpen = true
-        } else {
-            libraryViewModel.refreshLocalPermission()
-        }
-    }
-
-    if (localLibraryOpen) {
-        LocalLibraryBrowser(
-            libState         = libState,
-            theme            = theme,
-            libraryViewModel = libraryViewModel,
-            onBack           = {
-                libraryViewModel.clearLocalAlbumSelection()
-                libraryViewModel.clearLocalArtistSelection()
-                localLibraryOpen = false
-            },
-            onTrackPlay = { tracks, idx ->
-                playerViewModel.playTracks(tracks, idx)
-                onTrackPlayed()
-            },
-        )
-        return
+        if (granted) onNavigateToLocalLibrary()
+        else libraryViewModel.refreshLocalPermission()
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -1288,14 +1265,8 @@ private fun SourcesTab(
                     .fillMaxWidth()
                     .clickable {
                         when {
-                            libState.isLocalScanning -> { /* wait */ }
-                            libState.localHasPermission && libState.localTrackCount > 0 -> {
-                                localLibraryOpen = true
-                            }
-                            libState.localHasPermission -> {
-                                libraryViewModel.scanLocalMedia()
-                                localLibraryOpen = true
-                            }
+                            libState.isLocalScanning     -> { /* wait */ }
+                            libState.localHasPermission  -> onNavigateToLocalLibrary()
                             else -> permissionLauncher.launch(LocalMediaRepository.REQUIRED_PERMISSION)
                         }
                     }
@@ -1310,10 +1281,10 @@ private fun SourcesTab(
                     Text("Local Storage", color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(
                         when {
-                            libState.isLocalScanning    -> "scanning…"
+                            libState.isLocalScanning     -> "scanning…"
                             !libState.localHasPermission -> "tap to grant permission"
-                            libState.localTrackCount > 0 -> "${libState.localTrackCount} tracks on device"
-                            else -> "tap to scan"
+                            libState.localTrackCount > 0 -> "${libState.localTrackCount} tracks · tap to browse"
+                            else                         -> "tap to browse"
                         },
                         color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
                     )
@@ -1341,221 +1312,6 @@ private fun SourcesTab(
                 }
                 HorizontalDivider(color = theme.border, thickness = 0.5.dp)
             }
-        }
-    }
-}
-
-// ─── LOCAL LIBRARY BROWSER ───────────────────────────────────
-
-@Composable
-private fun LocalLibraryBrowser(
-    libState:         LibraryUiState,
-    theme:            DroidTheme,
-    libraryViewModel: LibraryViewModel,
-    onBack:           () -> Unit,
-    onTrackPlay:      (List<Track>, Int) -> Unit,
-) {
-    Column(Modifier.fillMaxSize()) {
-        // ── Header ────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(theme.panel)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = when {
-                    libState.localSelectedAlbum != null  -> libState.localSelectedAlbum.name
-                    libState.localSelectedArtist != null -> libState.localSelectedArtist.name
-                    else -> "LOCAL LIBRARY"
-                },
-                color = theme.accent, fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            val backLabel = when {
-                libState.localSelectedAlbum  != null -> "← Back"
-                libState.localSelectedArtist != null -> "← Back"
-                else -> "← Sources"
-            }
-            Text(
-                text = backLabel, color = theme.fg2, fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable {
-                    when {
-                        libState.localSelectedAlbum  != null -> libraryViewModel.clearLocalAlbumSelection()
-                        libState.localSelectedArtist != null -> libraryViewModel.clearLocalArtistSelection()
-                        else -> onBack()
-                    }
-                },
-            )
-        }
-
-        // ── Tab bar (only at top level) ───────────────────────
-        if (libState.localSelectedAlbum == null && libState.localSelectedArtist == null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(theme.panel)
-                    .padding(horizontal = 12.dp),
-            ) {
-                listOf(
-                    "Albums"  to LocalLibraryTab.Albums,
-                    "Artists" to LocalLibraryTab.Artists,
-                    "Tracks"  to LocalLibraryTab.Tracks,
-                ).forEach { (label, tab) ->
-                    val active = libState.localLibraryTab == tab
-                    Text(
-                        text = label,
-                        color = if (active) theme.accent else theme.fg2,
-                        fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier
-                            .clickable { libraryViewModel.setLocalLibraryTab(tab) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                    )
-                }
-            }
-        }
-        HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-
-        // ── Content ───────────────────────────────────────────
-        Box(Modifier.weight(1f)) {
-            when {
-                libState.isLocalScanning -> {
-                    CircularProgressIndicator(color = theme.accent, modifier = Modifier.align(Alignment.Center))
-                }
-                libState.localSelectedAlbum != null -> {
-                    LocalAlbumTrackList(
-                        album   = libState.localSelectedAlbum,
-                        tracks  = libState.localSelectedAlbumTracks,
-                        theme   = theme,
-                        onTrack = { idx -> onTrackPlay(libState.localSelectedAlbumTracks, idx) },
-                    )
-                }
-                libState.localSelectedArtist != null -> {
-                    if (libState.localSelectedArtistAlbums.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No albums found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                        }
-                    } else {
-                        LibraryAlbumGrid(
-                            albums       = libState.localSelectedArtistAlbums,
-                            theme        = theme,
-                            onAlbumClick = { libraryViewModel.loadLocalAlbumTracks(it) },
-                        )
-                    }
-                }
-                libState.localTrackCount == 0 -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No music found on device", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                    }
-                }
-                libState.localLibraryTab == LocalLibraryTab.Albums -> {
-                    LibraryAlbumGrid(
-                        albums       = libState.localAlbums,
-                        theme        = theme,
-                        onAlbumClick = { libraryViewModel.loadLocalAlbumTracks(it) },
-                    )
-                }
-                libState.localLibraryTab == LocalLibraryTab.Artists -> {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(libState.localArtists) { artist ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { libraryViewModel.loadLocalArtistAlbums(artist) }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(artist.name, color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${artist.albumCount} albums", color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Text("›", color = theme.fg2, fontSize = 14.sp)
-                            }
-                            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                        }
-                    }
-                }
-                libState.localLibraryTab == LocalLibraryTab.Tracks -> {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(libState.localAllTracks.withIndex().toList()) { (idx, track) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onTrackPlay(libState.localAllTracks, idx) }
-                                    .padding(horizontal = 16.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                Text(
-                                    "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
-                                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                                )
-                            }
-                            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalAlbumTrackList(
-    album:   Album,
-    tracks:  List<Track>,
-    theme:   DroidTheme,
-    onTrack: (Int) -> Unit,
-) {
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(64.dp).clip(RoundedCornerShape(6.dp)).background(theme.surface)) {
-                    if (album.coverArtId != null)
-                        AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
-                    else
-                        Text("♫", color = theme.accent, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(album.name, color = theme.fg, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    Text(album.artist, color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                    if (album.year > 0) Text(album.year.toString(), color = theme.fg2.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                }
-            }
-            HorizontalDivider(color = theme.border)
-        }
-        items(tracks.withIndex().toList()) { (idx, track) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onTrack(idx) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
-                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.width(24.dp),
-                )
-                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                }
-                Text(
-                    "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
-                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                )
-            }
-            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
         }
     }
 }
