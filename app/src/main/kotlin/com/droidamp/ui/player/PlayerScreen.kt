@@ -226,7 +226,12 @@ fun PlayerScreen(
                     PlayerTab.QUEUE   -> PlaylistTab(playerState, theme) { playerViewModel.seekToQueueItem(it) }
                     PlayerTab.LIBRARY -> LibraryTabContent(libraryViewModel, playerViewModel, theme)
                     PlayerTab.SOURCES -> SourcesTab(settingsViewModel, theme)
-                    PlayerTab.SEARCH  -> SearchTabContent(searchViewModel, playerViewModel, theme)
+                    PlayerTab.SEARCH  -> SearchTabContent(
+                        searchViewModel = searchViewModel,
+                        playerViewModel = playerViewModel,
+                        theme           = theme,
+                        onTrackPlayed   = { activeTab = PlayerTab.QUEUE },
+                    )
                 }
             }
         }
@@ -578,14 +583,7 @@ private fun EqSection(
         }
         Spacer(Modifier.height(3.dp))
         // ── EQ bars ───────────────────────────────────────────
-        if (bands.isEmpty()) {
-            Text(
-                text       = "plays first to enable",
-                color      = theme.fg2.copy(alpha = 0.4f),
-                fontSize   = 8.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-        } else {
+        if (bands.isNotEmpty()) {
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1256,10 +1254,16 @@ private fun SourcesTab(settingsViewModel: SettingsViewModel, theme: DroidTheme) 
 // ─── SEARCH tab ──────────────────────────────────────────────
 
 @Composable
-private fun SearchTabContent(searchViewModel: SearchViewModel, playerViewModel: PlayerViewModel, theme: DroidTheme) {
+private fun SearchTabContent(
+    searchViewModel: SearchViewModel,
+    playerViewModel: PlayerViewModel,
+    theme:           DroidTheme,
+    onTrackPlayed:   () -> Unit,
+) {
     val uiState by searchViewModel.uiState.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
+        // ── Search bar ────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().background(theme.surface).padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1285,27 +1289,70 @@ private fun SearchTabContent(searchViewModel: SearchViewModel, playerViewModel: 
         HorizontalDivider(color = theme.border, thickness = 0.5.dp)
 
         when {
+            // ── Album track list ──────────────────────────────
             uiState.selectedAlbum != null -> {
                 LibraryAlbumTracks(
                     album   = uiState.selectedAlbum!!,
                     tracks  = uiState.selectedAlbumTracks,
                     theme   = theme,
                     onBack  = { searchViewModel.clearAlbumSelection() },
-                    onTrack = { idx -> playerViewModel.playTracks(uiState.selectedAlbumTracks, idx) },
+                    onTrack = { idx ->
+                        playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
+                        onTrackPlayed()
+                    },
                 )
             }
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = theme.accent) }
+            // ── Artist album grid ─────────────────────────────
+            uiState.selectedArtist != null -> {
+                Column(Modifier.fillMaxSize()) {
+                    // Header with back button
+                    Row(
+                        modifier = Modifier.fillMaxWidth().background(theme.panel)
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("←", color = theme.accent, fontSize = 16.sp,
+                            modifier = Modifier.clickable { searchViewModel.clearArtistSelection() }.padding(end = 10.dp))
+                        Text(uiState.selectedArtist!!.name, color = theme.fg, fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    }
+                    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
+                    if (uiState.isLoadingTracks) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = theme.accent)
+                        }
+                    } else {
+                        LibraryAlbumGrid(
+                            albums       = uiState.selectedArtistAlbums,
+                            theme        = theme,
+                            onAlbumClick = { searchViewModel.loadAlbumTracks(it) },
+                        )
+                    }
+                }
             }
+            // ── Loading ───────────────────────────────────────
+            uiState.isLoading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = theme.accent)
+                }
+            }
+            // ── Search results ────────────────────────────────
             uiState.query.length >= 2 -> {
                 val results = uiState.results
                 LazyColumn(Modifier.fillMaxSize()) {
                     if (results.artists.isNotEmpty()) {
                         item { SectionHeader("ARTISTS", theme) }
                         items(results.artists) { artist ->
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { searchViewModel.loadArtistAlbums(artist) }
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                Text(artist.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                                Text(artist.name, color = theme.fg, fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                Text("›", color = theme.fg2, fontSize = 14.sp)
                             }
                             HorizontalDivider(color = theme.border, thickness = 0.5.dp)
                         }
@@ -1314,7 +1361,9 @@ private fun SearchTabContent(searchViewModel: SearchViewModel, playerViewModel: 
                         item { SectionHeader("ALBUMS", theme) }
                         items(results.albums) { album ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable { searchViewModel.loadAlbumTracks(album) }.padding(horizontal = 14.dp, vertical = 9.dp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { searchViewModel.loadAlbumTracks(album) }
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Box(Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)).background(theme.surface)) {
@@ -1322,10 +1371,11 @@ private fun SearchTabContent(searchViewModel: SearchViewModel, playerViewModel: 
                                     else Text("♫", color = theme.accent, fontSize = 14.sp, modifier = Modifier.align(Alignment.Center))
                                 }
                                 Spacer(Modifier.width(10.dp))
-                                Column {
+                                Column(Modifier.weight(1f)) {
                                     Text(album.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(album.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                                 }
+                                Text("›", color = theme.fg2, fontSize = 14.sp)
                             }
                             HorizontalDivider(color = theme.border, thickness = 0.5.dp)
                         }
@@ -1334,7 +1384,9 @@ private fun SearchTabContent(searchViewModel: SearchViewModel, playerViewModel: 
                         item { SectionHeader("TRACKS", theme) }
                         itemsIndexed(results.tracks) { idx, track ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable { playerViewModel.playTracks(results.tracks, idx) }.padding(horizontal = 14.dp, vertical = 9.dp),
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable { playerViewModel.playTracks(results.tracks, idx); onTrackPlayed() }
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {

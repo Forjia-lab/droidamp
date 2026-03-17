@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.droidamp.data.repository.NavidromeRepository
 import com.droidamp.data.repository.SearchResults
 import com.droidamp.domain.model.Album
+import com.droidamp.domain.model.Artist
 import com.droidamp.domain.model.Track
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
@@ -17,6 +18,8 @@ data class SearchUiState(
     val results: SearchResults = SearchResults(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    val selectedArtist: Artist? = null,
+    val selectedArtistAlbums: List<Album> = emptyList(),
     val selectedAlbum: Album? = null,
     val selectedAlbumTracks: List<Track> = emptyList(),
     val isLoadingTracks: Boolean = false,
@@ -71,5 +74,21 @@ class SearchViewModel @Inject constructor(
 
     fun clearAlbumSelection() {
         _uiState.update { it.copy(selectedAlbum = null, selectedAlbumTracks = emptyList()) }
+    }
+
+    fun loadArtistAlbums(artist: Artist) {
+        _uiState.update { it.copy(selectedArtist = artist, selectedArtistAlbums = emptyList(), isLoadingTracks = true) }
+        viewModelScope.launch {
+            repo.getArtistAlbums(artist.id).collect { result ->
+                result.fold(
+                    onSuccess = { albums -> _uiState.update { it.copy(selectedArtistAlbums = albums, isLoadingTracks = false) } },
+                    onFailure = { _uiState.update { it.copy(isLoadingTracks = false) } },
+                )
+            }
+        }
+    }
+
+    fun clearArtistSelection() {
+        _uiState.update { it.copy(selectedArtist = null, selectedArtistAlbums = emptyList()) }
     }
 }
