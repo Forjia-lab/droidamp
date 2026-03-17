@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -65,9 +66,10 @@ fun DroidampNavGraph(
         containerColor = theme.bg,
         bottomBar = {
             Column {
+                HorizontalDivider(color = theme.border, thickness = 0.5.dp)
                 NavigationBar(
                     containerColor = theme.panel,
-                    modifier       = Modifier.height(48.dp),
+                    modifier       = Modifier.height(56.dp),
                     windowInsets   = WindowInsets(0),
                 ) {
                     bottomNavScreens.forEach { screen ->

@@ -84,7 +84,8 @@ fun PlayerScreen(
     val activePreset by playerViewModel.activePreset.collectAsState()
     val starredIds  by playerViewModel.starredIds.collectAsState()
 
-    var activeTab        by remember { mutableStateOf(PlayerTab.QUEUE) }
+    var activeTab         by remember { mutableStateOf(PlayerTab.QUEUE) }
+    var showThemeSheet    by remember { mutableStateOf(false) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
     // ── Full-screen visualizer overlay ────────────────────────
@@ -110,6 +111,15 @@ fun PlayerScreen(
         return
     }
 
+    // ── Theme picker sheet ────────────────────────────────────
+    if (showThemeSheet) {
+        ThemePickerSheet(
+            themeViewModel = themeViewModel,
+            theme          = theme,
+            onDismiss      = { showThemeSheet = false },
+        )
+    }
+
     // ── Settings bottom sheet ──────────────────────────────────
     if (showSettingsSheet) {
         SettingsSheet(
@@ -123,7 +133,11 @@ fun PlayerScreen(
     Column(Modifier.fillMaxSize().background(theme.bg)) {
 
         // 1. Top bar — 48dp ────────────────────────────────────
-        TopBar(theme, onSettingsTap = { showSettingsSheet = true })
+        TopBar(
+            theme          = theme,
+            onThemeTap     = { showThemeSheet = true },
+            onSettingsTap  = { showSettingsSheet = true },
+        )
 
         // 2. Mini now-playing bar — 80dp ───────────────────────
         MiniNowPlayingBar(
@@ -220,7 +234,11 @@ fun PlayerScreen(
 // ─── 1. Top bar — 48dp ───────────────────────────────────────
 
 @Composable
-private fun TopBar(theme: DroidTheme, onSettingsTap: () -> Unit) {
+private fun TopBar(
+    theme:         DroidTheme,
+    onThemeTap:    () -> Unit,
+    onSettingsTap: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -237,8 +255,11 @@ private fun TopBar(theme: DroidTheme, onSettingsTap: () -> Unit) {
             fontFamily = FontFamily.Monospace,
             modifier   = Modifier.weight(1f),
         )
+        // 3 colored squares → theme picker
         Row(
-            modifier              = Modifier.clickable(onClick = onSettingsTap),
+            modifier              = Modifier
+                .clickable(onClick = onThemeTap)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment     = Alignment.CenterVertically,
         ) {
@@ -246,6 +267,15 @@ private fun TopBar(theme: DroidTheme, onSettingsTap: () -> Unit) {
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.vizBar))
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.eqBar))
         }
+        // Gear → server settings
+        Text(
+            text     = "⚙",
+            color    = theme.fg2,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .clickable(onClick = onSettingsTap)
+                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
+        )
     }
 }
 
@@ -687,6 +717,71 @@ private fun PlayerTabRow(
                                 .background(theme.accent, RoundedCornerShape(1.dp)),
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+// ─── Theme picker sheet ───────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemePickerSheet(
+    themeViewModel: ThemeViewModel,
+    theme:          DroidTheme,
+    onDismiss:      () -> Unit,
+) {
+    val currentTheme by themeViewModel.theme.collectAsState()
+    val sheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState       = sheetState,
+        containerColor   = theme.panel,
+        contentColor     = theme.fg,
+    ) {
+        Text(
+            text       = "THEMES",
+            color      = theme.fg2,
+            fontSize   = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier   = Modifier.padding(start = 16.dp, bottom = 10.dp),
+        )
+        LazyRow(
+            modifier              = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp),
+            contentPadding        = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(DroidThemes.all) { t ->
+                val isActive = t.id == currentTheme.id
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier            = Modifier.clickable { themeViewModel.setTheme(t) },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(t.bg)
+                            .then(if (isActive) Modifier.border(2.dp, currentTheme.accent, RoundedCornerShape(8.dp)) else Modifier),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(22.dp)
+                                .align(Alignment.Center)
+                                .clip(CircleShape)
+                                .background(t.accent)
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text       = t.displayName.take(9),
+                        color      = if (isActive) currentTheme.accent else currentTheme.fg2,
+                        fontSize   = 7.sp,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign  = TextAlign.Center,
+                    )
                 }
             }
         }
