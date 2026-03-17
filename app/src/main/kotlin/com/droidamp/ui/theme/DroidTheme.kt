@@ -36,11 +36,11 @@ object DroidThemes {
 
     val Catppuccin = DroidTheme(
         id = "catppuccin", displayName = "Catppuccin",
-        bg = Color(0xFF1E1E2E), panel = Color(0xFF181825), surface = Color(0xFF313244),
-        border = Color(0xFF45475A), accent = Color(0xFFCBA6F7), fg = Color(0xFFCDD6F4),
-        fg2 = Color(0xFF6C7086), green = Color(0xFFA6E3A1), yellow = Color(0xFFF9E2AF),
-        red = Color(0xFFF38BA8), vizBar = Color(0xFFCBA6F7), eqBar = Color(0xFF89DCEB),
-        volBar = Color(0xFF89B4FA), playBg = Color(0xFF2A1A3A), playBorder = Color(0xFFCBA6F7),
+        bg = Color(0xFF1E1E2E), panel = Color(0xFF313244), surface = Color(0xFF45475A),
+        border = Color(0xFF585B70), accent = Color(0xFFCBA6F7), fg = Color(0xFFCDD6F4),
+        fg2 = Color(0xFFA6ADC8), green = Color(0xFFA6E3A1), yellow = Color(0xFFF9E2AF),
+        red = Color(0xFFEB6F92), vizBar = Color(0xFFCBA6F7), eqBar = Color(0xFF89DCEB),
+        volBar = Color(0xFF89B4FA), playBg = Color(0xFF313244), playBorder = Color(0xFFCBA6F7),
     )
 
     val CatppuccinLatte = DroidTheme(
