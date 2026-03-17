@@ -132,8 +132,8 @@ fun PlayerScreen(
             onStar    = { playerState.currentTrack?.let { playerViewModel.toggleStar(it.id) } },
         )
 
-        // 3. Visualizer — 140dp ────────────────────────────────
-        Box(Modifier.fillMaxWidth().height(140.dp).background(theme.panel)) {
+        // 3. Visualizer — 100dp ────────────────────────────────
+        Box(Modifier.fillMaxWidth().height(100.dp).background(theme.panel)) {
             VisualizerCanvas(
                 fftData         = fftData,
                 mode            = vizMode,
