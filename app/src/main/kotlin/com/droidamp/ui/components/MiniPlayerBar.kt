@@ -1,6 +1,7 @@
 package com.droidamp.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,11 +113,18 @@ fun MiniPlayerBar(
 
             // Play / Pause
             IconButton(onClick = onPlayPause, modifier = Modifier.size(36.dp)) {
-                Text(
-                    text     = if (playerState.isPlaying) "⏸" else "▶",
-                    color    = theme.accent,
-                    fontSize = 16.sp,
-                )
+                if (playerState.isPlaying) {
+                    val accentColor = theme.accent
+                    Canvas(modifier = Modifier.size(14.dp)) {
+                        val barW = size.width * 0.28f
+                        val barH = size.height * 0.75f
+                        val top  = (size.height - barH) / 2f
+                        drawRect(color = accentColor, topLeft = Offset(0f, top), size = Size(barW, barH))
+                        drawRect(color = accentColor, topLeft = Offset(size.width - barW, top), size = Size(barW, barH))
+                    }
+                } else {
+                    Text(text = "▶\uFE0E", color = theme.accent, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
+                }
             }
 
             // Next
