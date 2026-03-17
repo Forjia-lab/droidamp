@@ -51,7 +51,6 @@ import com.droidamp.ui.library.LibraryViewModel
 import com.droidamp.ui.search.SearchViewModel
 import com.droidamp.ui.settings.SettingsViewModel
 import com.droidamp.ui.theme.DroidTheme
-import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
 import com.droidamp.ui.visualizer.VisualizerCanvas
 
@@ -79,8 +78,7 @@ fun PlayerScreen(
     val eqBands     by playerViewModel.eqBands.collectAsState()
     val starredIds  by playerViewModel.starredIds.collectAsState()
 
-    var activeTab       by remember { mutableStateOf(PlayerTab.PLAYLIST) }
-    var showThemePicker by remember { mutableStateOf(false) }
+    var activeTab by remember { mutableStateOf(PlayerTab.PLAYLIST) }
 
     // ── Full-screen visualizer overlay ────────────────────────
     if (vizFull) {
@@ -108,11 +106,7 @@ fun PlayerScreen(
     Column(Modifier.fillMaxSize().background(theme.bg)) {
 
         // ── 1. Top bar ─────────────────────────────────────────
-        TopBar(theme, onToggleThemePicker = { showThemePicker = !showThemePicker })
-
-        if (showThemePicker) {
-            ThemePickerStrip(DroidThemes.all, theme) { themeViewModel.setTheme(it) }
-        }
+        TopBar(theme, onSquaresTap = { activeTab = PlayerTab.SOURCES })
 
         // ── 2. Mini now-playing bar ────────────────────────────
         MiniNowPlayingBar(
@@ -223,7 +217,7 @@ fun PlayerScreen(
 // ─── Top bar ──────────────────────────────────────────────────
 
 @Composable
-private fun TopBar(theme: DroidTheme, onToggleThemePicker: () -> Unit) {
+private fun TopBar(theme: DroidTheme, onSquaresTap: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,67 +233,15 @@ private fun TopBar(theme: DroidTheme, onToggleThemePicker: () -> Unit) {
             fontFamily = FontFamily.Monospace,
             modifier   = Modifier.weight(1f),
         )
-        // 3 colored squares: theme indicator
+        // 3 colored squares: tap → Sources/settings tab
         Row(
-            modifier              = Modifier.clickable(onClick = onToggleThemePicker),
+            modifier              = Modifier.clickable(onClick = onSquaresTap),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment     = Alignment.CenterVertically,
         ) {
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.accent))
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.vizBar))
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.eqBar))
-        }
-    }
-}
-
-// ─── Theme picker strip ───────────────────────────────────────
-
-@Composable
-private fun ThemePickerStrip(
-    themes:  List<DroidTheme>,
-    current: DroidTheme,
-    onPick:  (DroidTheme) -> Unit,
-) {
-    LazyRow(
-        modifier              = Modifier.fillMaxWidth().background(current.panel).padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        contentPadding        = PaddingValues(horizontal = 12.dp),
-    ) {
-        items(themes) { t ->
-            val isActive = t.id == current.id
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier            = Modifier.clickable { onPick(t) },
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(t.bg)
-                        .then(if (isActive) Modifier.padding(1.dp) else Modifier),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(if (isActive) 16.dp else 20.dp)
-                            .align(Alignment.Center)
-                            .clip(RoundedCornerShape(if (isActive) 3.dp else 4.dp))
-                            .background(t.bg)
-                    ) {
-                        Box(Modifier.size(8.dp).align(Alignment.Center).clip(CircleShape).background(t.accent))
-                    }
-                    if (isActive) {
-                        Box(Modifier.matchParentSize().clip(RoundedCornerShape(4.dp)).background(t.accent.copy(alpha = 0f)))
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text       = t.displayName.take(6),
-                    color      = if (isActive) current.accent else current.fg2,
-                    fontSize   = 6.sp,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign  = TextAlign.Center,
-                )
-            }
         }
     }
 }
@@ -514,6 +456,8 @@ private fun TransportRow(
 
 // ─── 10-band EQ ───────────────────────────────────────────────
 
+private val EQ_LABELS = listOf("60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K")
+
 @Composable
 private fun EqSection(
     bands:        List<EqBand>,
@@ -527,7 +471,7 @@ private fun EqSection(
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
         Text(
-            text       = if (bands.isEmpty()) "EQ" else "${bands.size} BAND EQ",
+            text       = "10 BAND EQ",
             color      = theme.fg2,
             fontSize   = 9.sp,
             fontFamily = FontFamily.Monospace,
@@ -541,12 +485,20 @@ private fun EqSection(
                 fontFamily = FontFamily.Monospace,
             )
         } else {
+            // Always render exactly 10 display bands; map proportionally to device bands
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                bands.forEach { band ->
-                    EqBandColumn(band = band, theme = theme, onLevelChange = { onBandChange(band.index, it) })
+                repeat(10) { displayIdx ->
+                    val deviceIdx = (displayIdx.toFloat() / 10f * bands.size).toInt().coerceIn(0, bands.size - 1)
+                    val band = bands[deviceIdx]
+                    EqBandColumn(
+                        band          = band,
+                        label         = EQ_LABELS[displayIdx],
+                        theme         = theme,
+                        onLevelChange = { onBandChange(band.index, it) },
+                    )
                 }
             }
         }
@@ -556,6 +508,7 @@ private fun EqSection(
 @Composable
 private fun EqBandColumn(
     band:          EqBand,
+    label:         String,
     theme:         DroidTheme,
     onLevelChange: (Short) -> Unit,
 ) {
@@ -563,11 +516,6 @@ private fun EqBandColumn(
     val normalized  = if (band.maxLevel != band.minLevel)
         (band.level - band.minLevel).toFloat() / (band.maxLevel - band.minLevel)
     else 0.5f
-
-    val freqLabel = if (band.centerFreqHz >= 1000)
-        "${band.centerFreqHz / 1000}K"
-    else
-        "${band.centerFreqHz}"
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(
@@ -625,7 +573,7 @@ private fun EqBandColumn(
             }
         }
         Spacer(Modifier.height(2.dp))
-        Text(freqLabel, color = theme.fg2, fontSize = 6.sp, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+        Text(label, color = theme.fg2, fontSize = 6.sp, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
     }
 }
 

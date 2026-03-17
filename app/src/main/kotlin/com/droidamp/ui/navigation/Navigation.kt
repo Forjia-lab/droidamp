@@ -33,9 +33,9 @@ import com.droidamp.ui.theme.ThemeViewModel
 
 sealed class Screen(val route: String, val label: String, val icon: String) {
     object Play    : Screen("play",    "PLAY",    "▶")
-    object Browse  : Screen("browse",  "BROWSE",  "♫")
+    object Browse  : Screen("browse",  "BROWSE",  "⊞")
     object Library : Screen("library", "LIBRARY", "≡")
-    object Search  : Screen("search",  "SEARCH",  "🔍")
+    object Search  : Screen("search",  "SEARCH",  "⌕")
 }
 
 private val bottomNavScreens = listOf(Screen.Play, Screen.Browse, Screen.Library, Screen.Search)

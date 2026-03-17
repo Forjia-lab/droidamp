@@ -270,12 +270,14 @@ class PlayerViewModel @Inject constructor(
 
     private fun processFft(fft: ByteArray) {
         val bands = 20
-        val bucketSize = (fft.size / 2) / bands
+        // Skip fft[0] (DC offset); usable data starts at index 1
+        val usable    = fft.size / 2 - 1
+        val bucketSize = (usable / bands).coerceAtLeast(1)
         val result = FloatArray(bands) { b ->
-            val start = b * bucketSize
-            val end   = start + bucketSize
+            val start = 1 + b * bucketSize
+            val end   = (start + bucketSize).coerceAtMost(fft.size / 2)
             val rms   = sqrt(fft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
-            rms.coerceIn(0f, 1f)
+            (rms * 3f).coerceIn(0f, 1f)
         }
         val prev = _fftData.value
         _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
