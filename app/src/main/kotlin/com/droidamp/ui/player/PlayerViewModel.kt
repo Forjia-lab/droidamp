@@ -277,7 +277,7 @@ class PlayerViewModel @Inject constructor(
             val start = b * bucketSize
             val end   = (start + bucketSize).coerceAtMost(usableFft.size)
             val rms   = sqrt(usableFft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
-            (rms * 3f).coerceIn(0f, 1f)
+            (rms * 5f).coerceIn(0f, 1f)
         }
         val prev = _fftData.value
         _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }

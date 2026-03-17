@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -111,25 +110,30 @@ fun MiniPlayerBar(
 
             Spacer(Modifier.width(8.dp))
 
-            // Play / Pause
-            IconButton(onClick = onPlayPause, modifier = Modifier.size(36.dp)) {
+            // Play / Pause — Box avoids Material3 LocalContentColor interference
+            Box(
+                modifier         = Modifier.size(36.dp).clickable(onClick = onPlayPause),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (playerState.isPlaying) {
-                    val accentColor = theme.accent
-                    Canvas(modifier = Modifier.size(14.dp)) {
+                    Canvas(modifier = Modifier.size(16.dp)) {
                         val barW = size.width * 0.28f
                         val barH = size.height * 0.75f
                         val top  = (size.height - barH) / 2f
-                        drawRect(color = accentColor, topLeft = Offset(0f, top), size = Size(barW, barH))
-                        drawRect(color = accentColor, topLeft = Offset(size.width - barW, top), size = Size(barW, barH))
+                        drawRect(color = theme.accent, topLeft = Offset(0f, top), size = Size(barW, barH))
+                        drawRect(color = theme.accent, topLeft = Offset(size.width - barW, top), size = Size(barW, barH))
                     }
                 } else {
                     Text(text = "▶\uFE0E", color = theme.accent, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
                 }
             }
 
-            // Next
-            IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-                Text(text = "⏭", color = theme.fg2, fontSize = 14.sp)
+            // Next — ▶▶ avoids ⏭ emoji color override
+            Box(
+                modifier         = Modifier.size(36.dp).clickable(onClick = onNext),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "▶▶", color = theme.fg2, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
             }
         }
     }
