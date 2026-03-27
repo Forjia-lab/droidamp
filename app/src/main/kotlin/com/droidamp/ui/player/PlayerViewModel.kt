@@ -7,7 +7,9 @@ import android.media.audiofx.Visualizer
 import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -27,13 +29,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.ln
+import kotlin.math.pow
 import kotlin.math.sqrt
+
+enum class RgMode { OFF, TRACK, ALBUM }
 
 data class EqBand(
     val index: Int,
@@ -50,7 +56,10 @@ class PlayerViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        private val KEY_EQ_PRESET = stringPreferencesKey("eq_preset")
+        private val KEY_EQ_PRESET       = stringPreferencesKey("eq_preset")
+        private val KEY_RG_MODE         = stringPreferencesKey("rg_mode")
+        private val KEY_RG_PREAMP       = floatPreferencesKey("rg_preamp")
+        private val KEY_RG_PREVENT_CLIP = booleanPreferencesKey("rg_prevent_clipping")
 
         // dB values; applied as dB * 100 = millibels
         val EQ_PRESETS: Map<String, IntArray> = linkedMapOf(
@@ -88,6 +97,16 @@ class PlayerViewModel @Inject constructor(
     private val _activePreset = MutableStateFlow("Flat")
     val activePreset: StateFlow<String> = _activePreset.asStateFlow()
 
+    // ── ReplayGain settings ───────────────────────────────────
+    private val _rgMode           = MutableStateFlow(RgMode.OFF)
+    val rgMode: StateFlow<RgMode> = _rgMode.asStateFlow()
+
+    private val _rgPreamp           = MutableStateFlow(0f)
+    val rgPreamp: StateFlow<Float>  = _rgPreamp.asStateFlow()
+
+    private val _rgPreventClipping          = MutableStateFlow(true)
+    val rgPreventClipping: StateFlow<Boolean> = _rgPreventClipping.asStateFlow()
+
     // ── Favorites (in-memory) ─────────────────────────────────
     private val _starredIds = MutableStateFlow<Set<String>>(emptySet())
     val starredIds: StateFlow<Set<String>> = _starredIds.asStateFlow()
@@ -103,6 +122,16 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val prefs = dataStore.data.first()
             _activePreset.value = prefs[KEY_EQ_PRESET] ?: "Flat"
+            _rgMode.value = prefs[KEY_RG_MODE]
+                ?.let { runCatching { RgMode.valueOf(it) }.getOrDefault(RgMode.OFF) }
+                ?: RgMode.OFF
+            _rgPreamp.value = prefs[KEY_RG_PREAMP] ?: 0f
+            _rgPreventClipping.value = prefs[KEY_RG_PREVENT_CLIP] ?: true
+        }
+        // Re-apply gain whenever any RG setting changes
+        viewModelScope.launch {
+            combine(_rgMode, _rgPreamp, _rgPreventClipping) { _, _, _ -> Unit }
+                .collect { applyReplayGain() }
         }
     }
 
@@ -130,6 +159,7 @@ class PlayerViewModel @Inject constructor(
                 queueIndex   = idx,
                 currentTrack = it.queue.getOrNull(idx),
             ) }
+            applyReplayGain()
         }
         override fun onRepeatModeChanged(repeatMode: Int) {
             _playerState.update {
@@ -183,6 +213,7 @@ class PlayerViewModel @Inject constructor(
             play()
         }
         _playerState.update { it.copy(queue = tracks, queueIndex = startIndex, currentTrack = tracks.getOrNull(startIndex)) }
+        applyReplayGain()
     }
 
     fun togglePlayPause() {
@@ -205,6 +236,58 @@ class PlayerViewModel @Inject constructor(
     fun setVolume(volume: Float) {
         controller?.volume = volume
         _playerState.update { it.copy(volume = volume) }
+    }
+
+    // ── ReplayGain controls ───────────────────────────────────
+
+    fun setRgMode(mode: RgMode) {
+        _rgMode.value = mode
+        viewModelScope.launch { dataStore.edit { it[KEY_RG_MODE] = mode.name } }
+    }
+
+    fun setRgPreamp(db: Float) {
+        _rgPreamp.value = db
+        viewModelScope.launch { dataStore.edit { it[KEY_RG_PREAMP] = db } }
+    }
+
+    fun setRgPreventClipping(enabled: Boolean) {
+        _rgPreventClipping.value = enabled
+        viewModelScope.launch { dataStore.edit { it[KEY_RG_PREVENT_CLIP] = enabled } }
+    }
+
+    private fun applyReplayGain() {
+        val mode  = _rgMode.value
+        val track = _playerState.value.currentTrack
+
+        if (mode == RgMode.OFF || track?.replayGain == null) {
+            controller?.volume = 1f
+            return
+        }
+
+        val rg     = track.replayGain
+        val gainDb = when (mode) {
+            RgMode.TRACK -> rg.trackGain
+            RgMode.ALBUM -> rg.albumGain ?: rg.trackGain
+            RgMode.OFF   -> null
+        } ?: run {
+            controller?.volume = 1f
+            return
+        }
+
+        var linearGain = 10f.pow((gainDb + _rgPreamp.value) / 20f)
+
+        if (_rgPreventClipping.value) {
+            val peak = when (mode) {
+                RgMode.TRACK -> rg.trackPeak
+                RgMode.ALBUM -> rg.albumPeak ?: rg.trackPeak
+                RgMode.OFF   -> null
+            }
+            if (peak != null && peak > 0f && peak * linearGain > 1f) {
+                linearGain = 1f / peak
+            }
+        }
+
+        controller?.volume = linearGain.coerceIn(0f, 1f)
     }
 
     fun toggleRepeat() {

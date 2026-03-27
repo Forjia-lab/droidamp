@@ -1,5 +1,12 @@
 package com.droidamp.domain.model
 
+data class ReplayGain(
+    val trackGain: Float? = null,   // dB
+    val albumGain: Float? = null,   // dB
+    val trackPeak: Float? = null,   // linear amplitude (0.0–1.0+)
+    val albumPeak: Float? = null,
+)
+
 data class Track(
     val id: String,
     val title: String,
@@ -16,6 +23,7 @@ data class Track(
     val source: TrackSource = TrackSource.NAVIDROME,
     val bpm: String? = null,
     val camelotKey: String? = null,
+    val replayGain: ReplayGain? = null,
 )
 
 data class Album(

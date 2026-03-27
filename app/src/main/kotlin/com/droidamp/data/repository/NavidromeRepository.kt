@@ -9,6 +9,7 @@ import com.droidamp.data.api.SubsonicApiService
 import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Artist
 import com.droidamp.domain.model.Playlist
+import com.droidamp.domain.model.ReplayGain
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
 import kotlinx.coroutines.flow.Flow
@@ -138,6 +139,14 @@ private fun ApiSong.toTrack(
     coverArtId = coverArt?.let { artUrl(it) } ?: fallbackArtUrl,
     streamUrl = streamUrl(id),
     source = TrackSource.NAVIDROME,
+    replayGain = replayGain?.let {
+        ReplayGain(
+            trackGain = it.trackGain,
+            albumGain = it.albumGain,
+            trackPeak = it.trackPeak,
+            albumPeak = it.albumPeak,
+        )
+    },
 )
 
 private fun ApiPlaylist.toPlaylist() = Playlist(

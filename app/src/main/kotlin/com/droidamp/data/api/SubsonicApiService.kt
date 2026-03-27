@@ -185,4 +185,12 @@ data class ApiSong(
     val suffix: String = "",
     val coverArt: String? = null,
     val starred: String? = null,
+    val replayGain: ApiReplayGain? = null,
+)
+
+data class ApiReplayGain(
+    val trackGain: Float? = null,
+    val albumGain: Float? = null,
+    val trackPeak: Float? = null,
+    val albumPeak: Float? = null,
 )

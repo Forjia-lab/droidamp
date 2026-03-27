@@ -86,7 +86,7 @@ class LocalMediaRepository @Inject constructor(
                 val extension = filePath?.substringAfterLast('.')?.lowercase()
                     ?.takeIf { it.isNotBlank() && it.length <= 5 }
                     ?: suffix.removePrefix("x-").lowercase()
-                val (bpm, camelotKey) = metadataScanner.scan(streamUri, extension)
+                val scanResult = metadataScanner.scan(streamUri, extension)
 
                 tracks.add(Track(
                     id          = "local:$id",
@@ -102,8 +102,9 @@ class LocalMediaRepository @Inject constructor(
                     coverArtId  = coverUri,
                     streamUrl   = streamUri,
                     source      = TrackSource.LOCAL,
-                    bpm         = bpm,
-                    camelotKey  = camelotKey,
+                    bpm         = scanResult.bpm,
+                    camelotKey  = scanResult.camelotKey,
+                    replayGain  = scanResult.replayGain,
                 ))
             }
         }

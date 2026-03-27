@@ -3,12 +3,15 @@ package com.droidamp.data.local
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.droidamp.domain.model.ReplayGain
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
+import org.jaudiotagger.tag.id3.AbstractID3v2Tag
 import org.jaudiotagger.tag.id3.ID3v23Tag
 import org.jaudiotagger.tag.id3.ID3v24Tag
+import org.jaudiotagger.tag.id3.framebody.FrameBodyTXXX
 import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
@@ -17,6 +20,12 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class ScanResult(
+    val bpm: String? = null,
+    val camelotKey: String? = null,
+    val replayGain: ReplayGain? = null,
+)
 
 // ─────────────────────────────────────────────────────────────
 //  TrackMetadataScanner
@@ -65,14 +74,13 @@ class TrackMetadataScanner @Inject constructor(
     }
 
     /**
-     * Reads BPM and musical key from a MediaStore content URI.
+     * Reads BPM, musical key, and ReplayGain tags from a MediaStore content URI.
      * [extension] is the file extension ("wav", "mp3", "flac", …) used
      * to select the right parse strategy.
      *
      * Blocking — call only from an IO-dispatched coroutine or thread.
-     * Returns Pair(bpm, camelotKey) e.g. ("72", "9A · Em"), both nullable.
      */
-    fun scan(contentUriString: String, extension: String): Pair<String?, String?> {
+    fun scan(contentUriString: String, extension: String): ScanResult {
         val uri = Uri.parse(contentUriString)
         Log.d(TAG, "scan uri=$contentUriString  ext=$extension")
         return when (extension.lowercase()) {
@@ -83,27 +91,27 @@ class TrackMetadataScanner @Inject constructor(
 
     // ── WAV: stream RIFF chunks directly, no temp file ────────────
 
-    private fun scanWavViaStream(uri: Uri): Pair<String?, String?> {
+    private fun scanWavViaStream(uri: Uri): ScanResult {
         return try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 readWavId3FromStream(stream)
             } ?: run {
                 Log.w(TAG, "scanWavViaStream: ContentResolver returned null stream for $uri")
-                null to null
+                ScanResult()
             }
         } catch (e: Exception) {
             Log.e(TAG, "scanWavViaStream: ${e.javaClass.simpleName}: ${e.message}")
-            null to null
+            ScanResult()
         }
     }
 
-    private fun readWavId3FromStream(stream: InputStream): Pair<String?, String?> {
+    private fun readWavId3FromStream(stream: InputStream): ScanResult {
         // Verify RIFF/WAVE header (12 bytes)
         val header = ByteArray(12)
-        if (stream.readFully(header) != 12) return null to null
+        if (stream.readFully(header) != 12) return ScanResult()
         if (header.sliceStr(0, 4) != "RIFF" || header.sliceStr(8, 4) != "WAVE") {
             Log.w(TAG, "readWavId3FromStream: not a RIFF/WAVE file")
-            return null to null
+            return ScanResult()
         }
 
         val chunkId   = ByteArray(4)
@@ -121,8 +129,8 @@ class TrackMetadataScanner @Inject constructor(
                 val data = ByteArray(size.toInt())
                 val read = stream.readFully(data)
                 Log.d(TAG, "readWavId3FromStream: id3 chunk found, read $read/${data.size} bytes")
-                val tag = parseId3Bytes(data) ?: return null to null
-                return extractBpmKey(tag, "wav-stream")
+                val tag = parseId3Bytes(data) ?: return ScanResult()
+                return extractAll(tag, "wav-stream")
             }
 
             // Skip chunk; WAV chunks are padded to even offsets
@@ -130,12 +138,12 @@ class TrackMetadataScanner @Inject constructor(
             stream.skipFully(aligned)
         }
         Log.d(TAG, "readWavId3FromStream: no id3 chunk found")
-        return null to null
+        return ScanResult()
     }
 
     // ── Non-WAV: copy to temp file, scan with jaudiotagger ────────
 
-    private fun scanViaJAudioTagger(uri: Uri, extension: String): Pair<String?, String?> {
+    private fun scanViaJAudioTagger(uri: Uri, extension: String): ScanResult {
         // Use thread ID in name so parallel scans don't collide
         val tempFile = File(context.cacheDir, "droidamp_meta_${Thread.currentThread().id}.$extension")
         return try {
@@ -144,17 +152,17 @@ class TrackMetadataScanner @Inject constructor(
             }
             if (copied == null) {
                 Log.w(TAG, "scanViaJAudioTagger: null stream for $uri")
-                return null to null
+                return ScanResult()
             }
             Log.d(TAG, "scanViaJAudioTagger: temp=${tempFile.path}  size=${tempFile.length()}")
             val tag = runCatching { AudioFileIO.read(tempFile).tag }.getOrElse {
                 Log.e(TAG, "scanViaJAudioTagger: jaudiotagger exception: ${it.message}")
                 null
             }
-            if (tag == null) null to null else extractBpmKey(tag, extension)
+            if (tag == null) ScanResult() else extractAll(tag, extension)
         } catch (e: Exception) {
             Log.e(TAG, "scanViaJAudioTagger: ${e.javaClass.simpleName}: ${e.message}")
-            null to null
+            ScanResult()
         } finally {
             tempFile.delete()
         }
@@ -185,12 +193,66 @@ class TrackMetadataScanner @Inject constructor(
 
     // ── Field reading + key formatting ────────────────────────────
 
-    private fun extractBpmKey(tag: Tag, label: String): Pair<String?, String?> {
+    private fun extractAll(tag: Tag, label: String): ScanResult {
         val rawBpm = readField(tag, FieldKey.BPM, label)
         val bpm    = rawBpm?.let { it.toFloatOrNull()?.toInt()?.toString() ?: it }
         val rawKey = readField(tag, FieldKey.KEY, label)
-        Log.d(TAG, "extractBpmKey: bpm=$bpm  key=$rawKey  [$label]")
-        return bpm to rawKey?.let { buildKeyDisplay(it) }
+        val rg     = extractReplayGain(tag, label)
+        Log.d(TAG, "extractAll: bpm=$bpm  key=$rawKey  rg=$rg  [$label]")
+        return ScanResult(
+            bpm        = bpm,
+            camelotKey = rawKey?.let { buildKeyDisplay(it) },
+            replayGain = rg,
+        )
+    }
+
+    private fun extractReplayGain(tag: Tag, label: String): ReplayGain? {
+        // Vorbis (FLAC, OGG): fields are stored with the raw tag name as key.
+        // ID3v2 (MP3): stored in TXXX frames — readRgTag() handles both cases.
+        val trackGain = readRgDb(tag, "REPLAYGAIN_TRACK_GAIN", label)
+        val albumGain = readRgDb(tag, "REPLAYGAIN_ALBUM_GAIN", label)
+        val trackPeak = readRgLinear(tag, "REPLAYGAIN_TRACK_PEAK", label)
+        val albumPeak = readRgLinear(tag, "REPLAYGAIN_ALBUM_PEAK", label)
+        if (trackGain == null && albumGain == null && trackPeak == null && albumPeak == null) return null
+        return ReplayGain(trackGain = trackGain, albumGain = albumGain, trackPeak = trackPeak, albumPeak = albumPeak)
+    }
+
+    /**
+     * Reads a tag field by its raw name, covering:
+     *  - Vorbis comment (FLAC, OGG): tag.getFirst(name) works directly.
+     *  - ID3v2 (MP3): ReplayGain is stored in TXXX frames; iterate and match description.
+     */
+    private fun readRgTag(tag: Tag, name: String): String? {
+        // Vorbis / MP4 / AIFF: getFirst(String) returns the value by raw field ID
+        val direct = runCatching { tag.getFirst(name) }.getOrNull()
+        if (!direct.isNullOrBlank()) return direct.trim()
+
+        // ID3v2: scan TXXX frames for a matching description
+        if (tag is AbstractID3v2Tag) {
+            val frames = runCatching { tag.getFields("TXXX") }.getOrNull() ?: return null
+            for (field in frames) {
+                val frame = field as? org.jaudiotagger.tag.id3.AbstractID3v2Frame ?: continue
+                val body  = frame.body as? FrameBodyTXXX ?: continue
+                if (body.description.equals(name, ignoreCase = true)) {
+                    return frame.content?.trim()?.takeIf { it.isNotEmpty() }
+                }
+            }
+        }
+        return null
+    }
+
+    /** Parses "−5.23 dB" or "−5.23" → Float in dB. */
+    private fun readRgDb(tag: Tag, name: String, label: String): Float? {
+        val raw = readRgTag(tag, name) ?: return null
+        Log.d(TAG, "readRgDb: $name=$raw [$label]")
+        return raw.replace(Regex("[dDbB\\s]"), "").toFloatOrNull()
+    }
+
+    /** Parses "0.987654" → Float (linear peak). */
+    private fun readRgLinear(tag: Tag, name: String, label: String): Float? {
+        val raw = readRgTag(tag, name) ?: return null
+        Log.d(TAG, "readRgLinear: $name=$raw [$label]")
+        return raw.trim().toFloatOrNull()
     }
 
     private fun readField(tag: Tag, key: FieldKey, label: String): String? = try {

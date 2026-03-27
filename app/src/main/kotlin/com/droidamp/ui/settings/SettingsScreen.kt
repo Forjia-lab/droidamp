@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.droidamp.ui.player.EqBand
 import com.droidamp.ui.player.PlayerViewModel
+import com.droidamp.ui.player.RgMode
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
@@ -48,8 +49,11 @@ fun SettingsScreen(
     val username     by viewModel.username.collectAsState()
     val password     by viewModel.password.collectAsState()
     val pingStatus   by viewModel.pingStatus.collectAsState()
-    val eqBands      by playerViewModel.eqBands.collectAsState()
-    val activePreset by playerViewModel.activePreset.collectAsState()
+    val eqBands           by playerViewModel.eqBands.collectAsState()
+    val activePreset      by playerViewModel.activePreset.collectAsState()
+    val rgMode            by playerViewModel.rgMode.collectAsState()
+    val rgPreamp          by playerViewModel.rgPreamp.collectAsState()
+    val rgPreventClipping by playerViewModel.rgPreventClipping.collectAsState()
 
     var showPassword by remember { mutableStateOf(false) }
 
@@ -97,11 +101,16 @@ fun SettingsScreen(
             Divider(color = theme.border)
             Spacer(Modifier.height(4.dp))
 
-            // ── ReplayGain section (placeholder) ──────────────
+            // ── ReplayGain section ────────────────────────────
             Label("REPLAYGAIN", theme)
-            PlaceholderSection(
-                lines = listOf("Mode — off / track / album", "Pre-amp — ±0.0 dB", "Prevent clipping"),
-                theme = theme,
+            ReplayGainSection(
+                mode            = rgMode,
+                preamp          = rgPreamp,
+                preventClipping = rgPreventClipping,
+                theme           = theme,
+                onMode          = { playerViewModel.setRgMode(it) },
+                onPreamp        = { playerViewModel.setRgPreamp(it) },
+                onPreventClipping = { playerViewModel.setRgPreventClipping(it) },
             )
 
             Spacer(Modifier.height(4.dp))
@@ -368,6 +377,114 @@ private fun EqBandColumn(
         }
         Spacer(Modifier.height(2.dp))
         Text(label, color = theme.fg2, fontSize = 6.sp, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+    }
+}
+
+// ─── ReplayGain section ───────────────────────────────────────
+
+@Composable
+private fun ReplayGainSection(
+    mode:             RgMode,
+    preamp:           Float,
+    preventClipping:  Boolean,
+    theme:            DroidTheme,
+    onMode:           (RgMode) -> Unit,
+    onPreamp:         (Float) -> Unit,
+    onPreventClipping:(Boolean) -> Unit,
+) {
+    val chipShape = RoundedCornerShape(6.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(theme.panel, RoundedCornerShape(8.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // Mode chips
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            RgMode.entries.forEach { m ->
+                val active = m == mode
+                Box(
+                    modifier = Modifier
+                        .clip(chipShape)
+                        .background(if (active) theme.accent else theme.surface)
+                        .clickable { onMode(m) }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        text       = m.name,
+                        color      = if (active) theme.bg else theme.fg2,
+                        fontSize   = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        }
+
+        // Pre-amp slider
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text       = "PRE-AMP",
+                    color      = theme.fg2,
+                    fontSize   = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                val sign = if (preamp >= 0f) "+" else ""
+                Text(
+                    text       = "$sign${"%.1f".format(preamp)} dB",
+                    color      = theme.accent,
+                    fontSize   = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            Slider(
+                value         = preamp,
+                onValueChange = { raw ->
+                    // Snap to 0.5 dB steps
+                    onPreamp((raw * 2).toInt() / 2f)
+                },
+                valueRange    = -10f..10f,
+                steps         = 39,  // (-10..+10) / 0.5 steps = 40 intervals → 39 intermediate steps
+                colors        = SliderDefaults.colors(
+                    thumbColor          = theme.accent,
+                    activeTrackColor    = theme.accent,
+                    inactiveTrackColor  = theme.surface,
+                ),
+                modifier = Modifier.fillMaxWidth().height(28.dp),
+            )
+        }
+
+        // Prevent clipping toggle
+        Row(
+            modifier          = Modifier
+                .fillMaxWidth()
+                .clickable { onPreventClipping(!preventClipping) }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text       = "PREVENT CLIPPING",
+                color      = theme.fg,
+                fontSize   = 10.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            Switch(
+                checked         = preventClipping,
+                onCheckedChange = onPreventClipping,
+                colors          = SwitchDefaults.colors(
+                    checkedThumbColor    = theme.bg,
+                    checkedTrackColor    = theme.accent,
+                    uncheckedThumbColor  = theme.fg2,
+                    uncheckedTrackColor  = theme.surface,
+                ),
+            )
+        }
     }
 }
 
