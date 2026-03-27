@@ -29,6 +29,7 @@ data class LibraryUiState(
     val selectedAlbum: Album?               = null,
     val selectedArtist: Artist?             = null,
     val selectedArtistAlbums: List<Album>   = emptyList(),
+    val selectedArtistTracks: List<Track>   = emptyList(),
     val selectedPlaylist: Playlist?         = null,
     val selectedPlaylistTracks: List<Track> = emptyList(),
     val isLoading: Boolean          = false,
@@ -108,13 +109,27 @@ class LibraryViewModel @Inject constructor(
         if (artist.id.startsWith("local_artist:")) {
             viewModelScope.launch(Dispatchers.IO) {
                 val albums = localRepo.albumsForArtist(artist.id, localTracks)
-                _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) }
+                val tracks = localTracks.filter { "local_artist:${it.artist}" == artist.id }
+                    .sortedWith(compareBy({ it.album }, { it.trackNumber }))
+                _uiState.update { it.copy(selectedArtistAlbums = albums, selectedArtistTracks = tracks, isLoading = false) }
             }
         } else {
             viewModelScope.launch {
                 repo.getArtistAlbums(artist.id).collect { result ->
                     result.fold(
-                        onSuccess = { albums -> _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) } },
+                        onSuccess = { albums ->
+                            _uiState.update { it.copy(selectedArtistAlbums = albums, isLoading = false) }
+                            // Load all tracks for the artist by fetching each album's tracks
+                            launch {
+                                val allTracks = mutableListOf<Track>()
+                                albums.forEach { album ->
+                                    repo.getAlbumTracks(album.id).collect { r ->
+                                        r.onSuccess { allTracks.addAll(it) }
+                                    }
+                                }
+                                _uiState.update { it.copy(selectedArtistTracks = allTracks) }
+                            }
+                        },
                         onFailure = { e -> _uiState.update { it.copy(error = e.message, isLoading = false) } },
                     )
                 }
@@ -122,7 +137,9 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun clearArtistSelection() { _uiState.update { it.copy(selectedArtist = null, selectedArtistAlbums = emptyList()) } }
+    fun clearArtistSelection() {
+        _uiState.update { it.copy(selectedArtist = null, selectedArtistAlbums = emptyList(), selectedArtistTracks = emptyList()) }
+    }
 
     fun scanLocalMedia() {
         _uiState.update { it.copy(isLocalScanning = true) }

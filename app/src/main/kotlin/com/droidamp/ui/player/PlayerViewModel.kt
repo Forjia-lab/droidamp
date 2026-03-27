@@ -86,6 +86,9 @@ class PlayerViewModel @Inject constructor(
     private val _fftData = MutableStateFlow(FloatArray(20) { 0f })
     val fftData: StateFlow<FloatArray> = _fftData.asStateFlow()
 
+    private val _waveformData = MutableStateFlow(FloatArray(128) { 0f })
+    val waveformData: StateFlow<FloatArray> = _waveformData.asStateFlow()
+
     private val _vizMode = MutableStateFlow(VisualizerMode.DEFAULT)
     val vizMode: StateFlow<VisualizerMode> = _vizMode.asStateFlow()
 
@@ -139,6 +142,18 @@ class PlayerViewModel @Inject constructor(
                 applyReplayGain()
             }
         }
+        // React to audio session ID changes from the service.
+        // The flow is seeded immediately from player.audioSessionId in Service.onCreate(), so we
+        // get a non-zero value as soon as the service starts — no waiting for onAudioSessionIdChanged.
+        viewModelScope.launch {
+            DroidampPlaybackService.audioSessionId.collect { sessionId ->
+                Log.d("VizDebug", "audioSessionId flow emitted → $sessionId (isPlaying=${_playerState.value.isPlaying})")
+                if (sessionId != 0 && _playerState.value.isPlaying) {
+                    attachVisualizer()
+                    attachEqualizer()
+                }
+            }
+        }
     }
 
     private fun connectToService() {
@@ -149,15 +164,28 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val future = MediaController.Builder(context, sessionToken).buildAsync()
             controller = future.await()
-            Log.d(TAG, "connectToService: controller ready, volume=${controller?.volume}")
+            Log.d(TAG, "connectToService: controller ready, isPlaying=${controller?.isPlaying}, volume=${controller?.volume}")
             controller?.addListener(playerListener)
             // Apply any RG settings that were loaded from DataStore before controller was ready
             applyReplayGain()
+            // If the player is already playing when we connect (e.g. after screen rotation),
+            // onIsPlayingChanged won't fire — attach effects immediately if session ID is ready.
+            val c = controller ?: return@launch
+            if (c.isPlaying) {
+                _playerState.update { it.copy(isPlaying = true) }
+                val sessionId = DroidampPlaybackService.audioSessionId.value
+                if (sessionId != 0) {
+                    attachAudioEffects()
+                }
+                // If session ID is 0 here, the audioSessionId flow collector (in init) will
+                // attach when the service emits the real ID.
+            }
         }
     }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            Log.d("VizDebug", "onIsPlayingChanged → $isPlaying (sessionId=${DroidampPlaybackService.audioSessionId.value})")
             _playerState.update { it.copy(isPlaying = isPlaying) }
             if (isPlaying) attachAudioEffects() else detachAudioEffects()
         }
@@ -387,30 +415,58 @@ class PlayerViewModel @Inject constructor(
 
     private fun attachVisualizer() {
         detachVisualizer()
-        val audioSessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
+        val sessionId = DroidampPlaybackService.audioSessionId.value
+        Log.d("VizDebug", "attachVisualizer called, sessionId=$sessionId")
+        if (sessionId == 0) {
+            Log.d("VizDebug", "attachVisualizer: session ID is 0, deferring")
+            return
+        }
         try {
-            visualizer = Visualizer(audioSessionId).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1]
-                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                    override fun onWaveFormDataCapture(v: Visualizer, waveform: ByteArray, sampleRate: Int) {}
-                    override fun onFftDataCapture(v: Visualizer, fft: ByteArray, sampleRate: Int) {
-                        processFft(fft)
-                    }
-                }, Visualizer.getMaxCaptureRate() / 2, false, true)
-                enabled = true
+            val v = Visualizer(sessionId)
+            // Clamp to 1024 — large capture sizes (max can be 16384+) don't improve our 20-band
+            // output but would reduce FFT frequency resolution per-bin for no benefit.
+            val targetSize = 1024.coerceIn(
+                Visualizer.getCaptureSizeRange()[0],
+                Visualizer.getCaptureSizeRange()[1],
+            )
+            v.captureSize = targetSize
+            val err = v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(vis: Visualizer, waveform: ByteArray, sampleRate: Int) {
+                    processWaveform(waveform)
+                }
+                override fun onFftDataCapture(vis: Visualizer, fft: ByteArray, sampleRate: Int) {
+                    Log.d("VizDebug", "FFT data received, size=${fft.size}")
+                    processFft(fft)
+                }
+            }, Visualizer.getMaxCaptureRate(), true, true)
+            if (err != Visualizer.SUCCESS) {
+                Log.e(TAG, "attachVisualizer: setDataCaptureListener failed, err=$err")
+                v.release()
+                return
             }
-        } catch (_: Exception) {}
+            val enableErr = v.setEnabled(true)
+            if (enableErr != Visualizer.SUCCESS) {
+                Log.e(TAG, "attachVisualizer: setEnabled(true) failed, err=$enableErr")
+                v.release()
+                return
+            }
+            visualizer = v
+            Log.d(TAG, "attachVisualizer: attached to sessionId=$sessionId captureSize=$targetSize")
+        } catch (e: Exception) {
+            Log.e(TAG, "attachVisualizer: exception — ${e.message}")
+        }
     }
 
     private fun detachVisualizer() {
         visualizer?.run { enabled = false; release() }
         visualizer = null
-        _fftData.value = FloatArray(20) { 0f }
+        _fftData.value    = FloatArray(20)  { 0f }
+        _waveformData.value = FloatArray(128) { 0f }
     }
 
     private fun attachEqualizer() {
         detachEqualizer()
-        val audioSessionId = DroidampPlaybackService.audioSessionId.takeIf { it != 0 } ?: return
+        val audioSessionId = DroidampPlaybackService.audioSessionId.value.takeIf { it != 0 } ?: return
         try {
             equalizer = Equalizer(0, audioSessionId).apply {
                 enabled = true
@@ -438,18 +494,63 @@ class PlayerViewModel @Inject constructor(
 
     private fun processFft(fft: ByteArray) {
         val bands = 20
-        // Drop fft[0] (DC) and fft[1] (Nyquist) — only audio frequency data from index 2 onward
-        val usableFft  = fft.drop(2).toByteArray()
-        val bucketSize = (usableFft.size / bands).coerceAtLeast(1)
-        val result = FloatArray(bands) { b ->
-            val start = b * bucketSize
-            val end   = (start + bucketSize).coerceAtMost(usableFft.size)
-            val rms    = sqrt(usableFft.slice(start until end).map { (it.toFloat() / 128f) * (it.toFloat() / 128f) }.average().toFloat())
-            val logged = (ln(1f + rms * 10f) / ln(11f)).coerceAtMost(1f)
-            (logged * 5f).coerceAtMost(1f)
+
+        // Android Visualizer FFT layout for N=captureSize bytes:
+        //   fft[0]          = real[0]   (DC component)
+        //   fft[1]          = real[N/2] (Nyquist component)
+        //   fft[2k], fft[2k+1] = real[k], imag[k]  for k = 1 .. N/2-1
+        //
+        // Number of usable frequency bins (excluding DC and Nyquist):
+        val numBins = (fft.size / 2) - 1   // e.g. 511 for captureSize=1024
+        if (numBins < 1) return
+
+        // Compute per-bin magnitudes using correct real+imag pairs.
+        // Range: 0 .. sqrt(128² + 128²) ≈ 181; normalise to 0..1 by dividing by 128.
+        val mags = FloatArray(numBins) { k ->
+            val ri = 2 + k * 2
+            val ii = ri + 1
+            if (ii >= fft.size) return@FloatArray 0f
+            val r = fft[ri].toFloat()
+            val i = fft[ii].toFloat()
+            sqrt(r * r + i * i) / 128f   // 0..~1.41, clamped below
         }
+
+        // Map bins → bands with logarithmic spacing (perceptually natural for music).
+        // startBin(b) = floor(numBins ^ (b / bands)), so low bands cover fewer bins
+        // (individual bass frequencies) and high bands cover many bins (treble spread).
+        val result = FloatArray(bands) { b ->
+            val startBin = numBins.toFloat().pow(b.toFloat() / bands).toInt()
+                .coerceIn(0, numBins - 1)
+            val endBin   = numBins.toFloat().pow((b + 1f) / bands).toInt()
+                .coerceIn(startBin + 1, numBins)
+            // RMS magnitude across the bin range for this band
+            val rms = sqrt(
+                mags.slice(startBin until endBin)
+                    .map { it * it }
+                    .average()
+                    .toFloat()
+                    .coerceAtLeast(0f)
+            )
+            // Perceptual log scaling: ln(1 + v*25)/ln(26) maps 0..1 to 0..1 with good
+            // sensitivity — quiet passages still move the bars, loud hits reach near 1.
+            (ln(1f + rms * 25f) / ln(26f)).coerceIn(0f, 1f)
+        }
+
+        // Asymmetric smoothing: rise instantly on peaks, fall slowly
         val prev = _fftData.value
-        _fftData.value = FloatArray(bands) { i -> prev[i] * 0.3f + result[i] * 0.7f }
+        _fftData.value = FloatArray(bands) { i ->
+            val p = prev[i]; val r = result[i]
+            if (r >= p) r else p * 0.82f + r * 0.18f
+        }
+    }
+
+    private fun processWaveform(waveform: ByteArray) {
+        val target = 128
+        val step   = (waveform.size / target).coerceAtLeast(1)
+        _waveformData.value = FloatArray(target) { i ->
+            val idx = (i * step).coerceAtMost(waveform.size - 1)
+            waveform[idx].toFloat() / 128f  // normalise to -1..1
+        }
     }
 
     override fun onCleared() {

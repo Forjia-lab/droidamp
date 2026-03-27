@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -67,6 +68,12 @@ fun LibraryScreen(
     var browseTab    by remember { mutableStateOf(BrowseTab.Albums) }
     var browseFilter by remember { mutableStateOf(BrowseFilter.All) }
     var searchQuery  by remember { mutableStateOf("") }
+
+    // Hoisted scroll states — persist across drill-down navigation
+    val artistsListState     = rememberLazyListState()
+    val albumsGridState      = rememberLazyGridState()
+    val localArtistsListState = rememberLazyListState()
+    val localAlbumsGridState  = rememberLazyGridState()
 
     // Gig Bag drill-down state (local to Browse All mode)
     var selectedGigBag by remember { mutableStateOf<GigBagWithCount?>(null) }
@@ -381,13 +388,62 @@ fun LibraryScreen(
                     )
                 }
 
-                // Artist album grid (drill-down)
+                // Artist album grid (drill-down) + All Tracks header
                 uiState.selectedArtist != null -> {
+                    val artistTracks = uiState.selectedArtistTracks
                     AlbumGrid(
                         albums          = uiState.selectedArtistAlbums,
                         theme           = theme,
                         showSourceBadge = (mode == BrowseMode.All),
                         onAlbumClick    = { libraryViewModel.loadAlbumTracks(it) },
+                        header          = {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(theme.surface)
+                                            .then(
+                                                if (artistTracks.isNotEmpty())
+                                                    Modifier.clickable {
+                                                        playerViewModel.playTracks(artistTracks, 0)
+                                                        onTrackPlayed()
+                                                    }
+                                                else Modifier
+                                            )
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text("▶", color = theme.accent, fontSize = 16.sp,
+                                            modifier = Modifier.padding(end = 12.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text("All Tracks", color = theme.fg, fontSize = 13.sp,
+                                                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                if (artistTracks.isEmpty()) "Loading…"
+                                                else "${artistTracks.size} tracks",
+                                                color = theme.fg2, fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                            )
+                                        }
+                                    }
+                                    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
+                                }
+                            }
+                            if (uiState.selectedArtistAlbums.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Text(
+                                        "ALBUMS",
+                                        color    = theme.fg2,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
 
@@ -400,12 +456,13 @@ fun LibraryScreen(
                             }
                         }
                         browseTab == BrowseTab.Albums -> {
-                            AlbumGrid(albums = uiState.localAlbums, theme = theme, showSourceBadge = false) {
+                            AlbumGrid(albums = uiState.localAlbums, theme = theme, showSourceBadge = false,
+                                state = localAlbumsGridState) {
                                 libraryViewModel.loadAlbumTracks(it)
                             }
                         }
                         browseTab == BrowseTab.Artists -> {
-                            LazyColumn(Modifier.fillMaxSize()) {
+                            LazyColumn(Modifier.fillMaxSize(), state = localArtistsListState) {
                                 items(uiState.localArtists) { artist ->
                                     ArtistRow(artist, theme, showSourceBadge = false) {
                                         libraryViewModel.loadArtistAlbums(artist)
@@ -512,7 +569,7 @@ fun LibraryScreen(
                             Text("No artists found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
                     } else {
-                        LazyColumn(Modifier.fillMaxSize()) {
+                        LazyColumn(Modifier.fillMaxSize(), state = artistsListState) {
                             items(filtered) { artist ->
                                 ArtistRow(artist, theme, showSourceBadge = true) {
                                     libraryViewModel.loadArtistAlbums(artist)
@@ -535,7 +592,8 @@ fun LibraryScreen(
                             Text("No albums found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
                     } else {
-                        AlbumGrid(albums = filtered, theme = theme, showSourceBadge = true) {
+                        AlbumGrid(albums = filtered, theme = theme, showSourceBadge = true,
+                            state = albumsGridState) {
                             libraryViewModel.loadAlbumTracks(it)
                         }
                     }
@@ -664,6 +722,8 @@ private fun AlbumGrid(
     albums:          List<Album>,
     theme:           DroidTheme,
     showSourceBadge: Boolean = false,
+    state:           LazyGridState = rememberLazyGridState(),
+    header:          (LazyGridScope.() -> Unit)? = null,
     onAlbumClick:    (Album) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -672,7 +732,9 @@ private fun AlbumGrid(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement   = Arrangement.spacedBy(8.dp),
         modifier              = Modifier.fillMaxSize(),
+        state                 = state,
     ) {
+        header?.invoke(this)
         items(albums) { album ->
             Column(
                 modifier = Modifier

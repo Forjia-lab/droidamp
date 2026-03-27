@@ -12,6 +12,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.droidamp.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.MutableStateFlow
 
 // ─────────────────────────────────────────────────────────────
 //  DroidampPlaybackService
@@ -26,9 +27,12 @@ import dagger.hilt.android.AndroidEntryPoint
 class DroidampPlaybackService : MediaSessionService() {
 
     companion object {
-        /** Updated by AnalyticsListener once ExoPlayer assigns its AudioTrack session. */
-        @Volatile var audioSessionId: Int = 0
-            private set
+        /**
+         * Observable audio session ID — updated when ExoPlayer creates/recreates its AudioTrack.
+         * The ViewModel collects this to know when it's safe to attach a Visualizer.
+         * Value is 0 until ExoPlayer's first AudioTrack is created.
+         */
+        val audioSessionId = MutableStateFlow(0)
     }
 
     private var mediaSession: MediaSession? = null
@@ -47,18 +51,21 @@ class DroidampPlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)   // pause on headphone unplug
             .build()
 
-        // Seed the session ID immediately (ExoPlayer may pre-allocate it during build)
-        audioSessionId = player.audioSessionId
-        Log.d("Droidamp", "ExoPlayer initial audioSessionId = ${player.audioSessionId}")
+        // Seed immediately — ExoPlayer pre-allocates a session ID during build().
+        // onAudioSessionIdChanged only fires when the ID *changes*, so if ExoPlayer reuses
+        // the pre-allocated ID for its AudioTrack (common case), we'd never get an update
+        // without this initial seed.
+        audioSessionId.value = player.audioSessionId
+        Log.d("VizDebug", "Service onCreate: initial audioSessionId=${player.audioSessionId}")
 
-        // Update whenever ExoPlayer (re-)creates its AudioTrack
+        // Also update whenever ExoPlayer recreates its AudioTrack (e.g. after an error)
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onAudioSessionIdChanged(
                 eventTime: AnalyticsListener.EventTime,
                 audioSessionId: Int,
             ) {
-                DroidampPlaybackService.audioSessionId = audioSessionId
-                Log.d("Droidamp", "ExoPlayer audioSessionId → $audioSessionId")
+                Log.d("VizDebug", "onAudioSessionIdChanged → $audioSessionId")
+                DroidampPlaybackService.audioSessionId.value = audioSessionId
             }
         })
 

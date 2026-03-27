@@ -65,9 +65,10 @@ fun PlayerScreen(
 ) {
     val theme       by themeViewModel.theme.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
-    val fftData     by playerViewModel.fftData.collectAsState()
-    val vizMode     by playerViewModel.vizMode.collectAsState()
-    val vizFull     by playerViewModel.isVizFullScreen.collectAsState()
+    val fftData      by playerViewModel.fftData.collectAsState()
+    val waveformData by playerViewModel.waveformData.collectAsState()
+    val vizMode      by playerViewModel.vizMode.collectAsState()
+    val vizFull      by playerViewModel.isVizFullScreen.collectAsState()
 
     var showThemeSheet  by remember { mutableStateOf(false) }
     var showGigBagSheet by remember { mutableStateOf(false) }
@@ -90,6 +91,7 @@ fun PlayerScreen(
         Box(Modifier.fillMaxSize().background(theme.bg)) {
             VisualizerCanvas(
                 fftData         = fftData,
+                waveformData    = waveformData,
                 mode            = vizMode,
                 accentColor     = theme.vizBar,
                 secondaryColor  = theme.red,
@@ -124,6 +126,7 @@ fun PlayerScreen(
         Box(Modifier.fillMaxWidth().height(100.dp).background(theme.panel)) {
             VisualizerCanvas(
                 fftData         = fftData,
+                waveformData    = waveformData,
                 mode            = vizMode,
                 accentColor     = theme.vizBar,
                 secondaryColor  = theme.red,
