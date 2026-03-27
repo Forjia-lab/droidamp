@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.guava.await
 import kotlinx.coroutines.launch
+import android.util.Log
 import javax.inject.Inject
 import kotlin.math.ln
 import kotlin.math.pow
@@ -56,6 +57,7 @@ class PlayerViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
+        private const val TAG = "ReplayGain"
         private val KEY_EQ_PRESET       = stringPreferencesKey("eq_preset")
         private val KEY_RG_MODE         = stringPreferencesKey("rg_mode")
         private val KEY_RG_PREAMP       = floatPreferencesKey("rg_preamp")
@@ -130,8 +132,12 @@ class PlayerViewModel @Inject constructor(
         }
         // Re-apply gain whenever any RG setting changes
         viewModelScope.launch {
-            combine(_rgMode, _rgPreamp, _rgPreventClipping) { _, _, _ -> Unit }
-                .collect { applyReplayGain() }
+            combine(_rgMode, _rgPreamp, _rgPreventClipping) { mode, preamp, clip ->
+                Triple(mode, preamp, clip)
+            }.collect { (mode, preamp, clip) ->
+                Log.d(TAG, "settings changed → mode=$mode preamp=$preamp preventClip=$clip controller=${controller != null}")
+                applyReplayGain()
+            }
         }
     }
 
@@ -143,7 +149,10 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             val future = MediaController.Builder(context, sessionToken).buildAsync()
             controller = future.await()
+            Log.d(TAG, "connectToService: controller ready, volume=${controller?.volume}")
             controller?.addListener(playerListener)
+            // Apply any RG settings that were loaded from DataStore before controller was ready
+            applyReplayGain()
         }
     }
 
@@ -256,38 +265,57 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun applyReplayGain() {
-        val mode  = _rgMode.value
-        val track = _playerState.value.currentTrack
+        val mode   = _rgMode.value
+        val preamp = _rgPreamp.value
+        val track  = _playerState.value.currentTrack
+        val c      = controller
 
-        if (mode == RgMode.OFF || track?.replayGain == null) {
-            controller?.volume = 1f
+        if (c == null) {
+            Log.d(TAG, "applyReplayGain: controller not ready yet, skipping")
             return
         }
 
-        val rg     = track.replayGain
+        if (mode == RgMode.OFF) {
+            Log.d(TAG, "applyReplayGain: mode=OFF → volume=1.0")
+            c.volume = 1f
+            return
+        }
+
+        val rg = track?.replayGain
         val gainDb = when (mode) {
-            RgMode.TRACK -> rg.trackGain
-            RgMode.ALBUM -> rg.albumGain ?: rg.trackGain
+            RgMode.TRACK -> rg?.trackGain
+            RgMode.ALBUM -> rg?.albumGain ?: rg?.trackGain
             RgMode.OFF   -> null
-        } ?: run {
-            controller?.volume = 1f
+        }
+
+        // No track-level gain available — apply preamp as a standalone volume offset
+        if (gainDb == null) {
+            val linearGain = 10f.pow(preamp / 20f).coerceIn(0f, 1f)
+            Log.d(TAG, "applyReplayGain: mode=$mode no RG data → preamp-only linearGain=$linearGain")
+            c.volume = linearGain
             return
         }
 
-        var linearGain = 10f.pow((gainDb + _rgPreamp.value) / 20f)
+        val totalDb    = gainDb + preamp
+        var linearGain = 10f.pow(totalDb / 20f)
+        Log.d(TAG, "applyReplayGain: mode=$mode gainDb=$gainDb preamp=$preamp totalDb=$totalDb linearGain(pre-clip)=$linearGain")
 
         if (_rgPreventClipping.value) {
             val peak = when (mode) {
-                RgMode.TRACK -> rg.trackPeak
-                RgMode.ALBUM -> rg.albumPeak ?: rg.trackPeak
+                RgMode.TRACK -> rg?.trackPeak
+                RgMode.ALBUM -> rg?.albumPeak ?: rg?.trackPeak
                 RgMode.OFF   -> null
             }
             if (peak != null && peak > 0f && peak * linearGain > 1f) {
-                linearGain = 1f / peak
+                val clipped = 1f / peak
+                Log.d(TAG, "applyReplayGain: clipping prevention: peak=$peak → clamping $linearGain → $clipped")
+                linearGain = clipped
             }
         }
 
-        controller?.volume = linearGain.coerceIn(0f, 1f)
+        val finalGain = linearGain.coerceIn(0f, 1f)
+        Log.d(TAG, "applyReplayGain: setting controller.volume=$finalGain (track='${track?.title}')")
+        c.volume = finalGain
     }
 
     fun toggleRepeat() {

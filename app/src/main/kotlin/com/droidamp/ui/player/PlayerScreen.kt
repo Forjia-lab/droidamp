@@ -1,9 +1,11 @@
 package com.droidamp.ui.player
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -43,6 +45,8 @@ import com.droidamp.domain.model.PlayerState
 import com.droidamp.domain.model.RepeatMode
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
+import com.droidamp.ui.gigbag.GigBagViewModel
+import com.droidamp.ui.navigation.AddToGigBagSheet
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
@@ -57,18 +61,28 @@ import com.droidamp.ui.visualizer.VisualizerCanvas
 fun PlayerScreen(
     playerViewModel: PlayerViewModel,
     themeViewModel:  ThemeViewModel,
+    gigBagViewModel: GigBagViewModel,
 ) {
     val theme       by themeViewModel.theme.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val fftData     by playerViewModel.fftData.collectAsState()
     val vizMode     by playerViewModel.vizMode.collectAsState()
     val vizFull     by playerViewModel.isVizFullScreen.collectAsState()
-    val starredIds  by playerViewModel.starredIds.collectAsState()
 
-    var showThemeSheet by remember { mutableStateOf(false) }
+    var showThemeSheet  by remember { mutableStateOf(false) }
+    var showGigBagSheet by remember { mutableStateOf(false) }
 
     if (showThemeSheet) {
         ThemePickerSheet(themeViewModel = themeViewModel, theme = theme, onDismiss = { showThemeSheet = false })
+    }
+
+    if (showGigBagSheet) {
+        AddToGigBagSheet(
+            gigBagViewModel = gigBagViewModel,
+            currentTrack    = playerState.currentTrack,
+            theme           = theme,
+            onDismiss       = { showGigBagSheet = false },
+        )
     }
 
     // ── Full-screen visualizer overlay ────────────────────────
@@ -101,10 +115,9 @@ fun PlayerScreen(
 
         // 2. Mini now-playing bar — 80dp ───────────────────────
         MiniNowPlayingBar(
-            track     = playerState.currentTrack,
-            isStarred = playerState.currentTrack?.id?.let { starredIds.contains(it) } ?: false,
-            theme     = theme,
-            onStar    = { playerState.currentTrack?.let { playerViewModel.toggleStar(it.id) } },
+            track       = playerState.currentTrack,
+            theme       = theme,
+            onLongPress = { if (playerState.currentTrack != null) showGigBagSheet = true },
         )
 
         // 3. Visualizer — 100dp ────────────────────────────────
@@ -204,18 +217,19 @@ private fun TopBar(theme: DroidTheme, onMenuTap: () -> Unit) {
 
 // ─── 2. Mini now-playing bar — 80dp ──────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MiniNowPlayingBar(
-    track:     Track?,
-    isStarred: Boolean,
-    theme:     DroidTheme,
-    onStar:    () -> Unit,
+    track:       Track?,
+    theme:       DroidTheme,
+    onLongPress: () -> Unit,
 ) {
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(theme.surface)
+                .combinedClickable(onClick = {}, onLongClick = onLongPress)
                 .padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -266,12 +280,6 @@ private fun MiniNowPlayingBar(
                     }
                 }
             }
-            Text(
-                text     = if (isStarred) "♥" else "♡",
-                color    = if (isStarred) theme.red else theme.fg2,
-                fontSize = 24.sp,
-                modifier = Modifier.padding(start = 10.dp).clickable(onClick = onStar),
-            )
         }
         HorizontalDivider(color = theme.border, thickness = 1.dp)
     }

@@ -173,6 +173,7 @@ fun DroidampNavGraph(
                 PlayerScreen(
                     playerViewModel = playerViewModel,
                     themeViewModel  = themeViewModel,
+                    gigBagViewModel = gigBagViewModel,
                 )
             }
             composable(Screen.Sources.route) {
@@ -237,7 +238,7 @@ fun DroidampNavGraph(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddToGigBagSheet(
+internal fun AddToGigBagSheet(
     gigBagViewModel: GigBagViewModel,
     currentTrack:    Track?,
     theme:           com.droidamp.ui.theme.DroidTheme,
