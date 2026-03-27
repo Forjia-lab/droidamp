@@ -2,8 +2,9 @@ package com.droidamp.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -28,17 +29,20 @@ import com.droidamp.ui.theme.DroidTheme
 //
 //  Shows: album art · track title · artist · play/pause · next
 //  Tap anywhere (not on controls) → navigate back to PlayerScreen
+//  Long-press → open "Add to Gig Bag" sheet
 // ─────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MiniPlayerBar(
-    playerState: PlayerState,
-    theme: DroidTheme,
-    coverArtUrl: String?,
-    onTap: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    modifier: Modifier = Modifier,
+    playerState:  PlayerState,
+    theme:        DroidTheme,
+    coverArtUrl:  String?,
+    onTap:        () -> Unit,
+    onPlayPause:  () -> Unit,
+    onNext:       () -> Unit,
+    onLongPress:  () -> Unit = {},
+    modifier:     Modifier = Modifier,
 ) {
     val track = playerState.currentTrack ?: return   // nothing playing → don't show
 
@@ -52,15 +56,15 @@ fun MiniPlayerBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(theme.panel)
-                .clickable(onClick = onTap)
+                .combinedClickable(onClick = onTap, onLongClick = onLongPress)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Album art
             AsyncImage(
-                model  = coverArtUrl,
+                model              = coverArtUrl,
                 contentDescription = null,
-                modifier = Modifier
+                modifier           = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(theme.surface),
@@ -71,20 +75,20 @@ fun MiniPlayerBar(
             // Track info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text     = track.title,
-                    color    = theme.fg,
-                    fontSize = 12.sp,
+                    text       = track.title,
+                    color      = theme.fg,
+                    fontSize   = 12.sp,
                     fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text     = track.artist,
-                    color    = theme.fg2,
-                    fontSize = 10.sp,
+                    text       = track.artist,
+                    color      = theme.fg2,
+                    fontSize   = 10.sp,
                     fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis,
                 )
             }
 
@@ -110,9 +114,9 @@ fun MiniPlayerBar(
 
             Spacer(Modifier.width(8.dp))
 
-            // Play / Pause — Box avoids Material3 LocalContentColor interference
+            // Play / Pause
             Box(
-                modifier         = Modifier.size(36.dp).clickable(onClick = onPlayPause),
+                modifier         = Modifier.size(36.dp).combinedClickable(onClick = onPlayPause),
                 contentAlignment = Alignment.Center,
             ) {
                 if (playerState.isPlaying) {
@@ -128,9 +132,9 @@ fun MiniPlayerBar(
                 }
             }
 
-            // Next — ▶▶ avoids ⏭ emoji color override
+            // Next
             Box(
-                modifier         = Modifier.size(36.dp).clickable(onClick = onNext),
+                modifier         = Modifier.size(36.dp).combinedClickable(onClick = onNext),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "▶▶", color = theme.fg2, fontSize = 13.sp, fontFamily = FontFamily.Monospace)

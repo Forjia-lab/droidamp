@@ -479,6 +479,14 @@ private fun PlaylistTab(
         initialFirstVisibleItemIndex = playerState.queueIndex.coerceAtLeast(0),
     )
 
+    // Auto-scroll to the active track whenever the index changes
+    LaunchedEffect(playerState.queueIndex) {
+        val target = playerState.queueIndex.coerceAtLeast(0)
+        if (target < playerState.queue.size) {
+            listState.animateScrollToItem(target)
+        }
+    }
+
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         itemsIndexed(playerState.queue) { idx, track ->
             val isCurrent = idx == playerState.queueIndex

@@ -21,7 +21,9 @@
       "Bash(javap -p /tmp/org/jaudiotagger/tag/id3/ID3v24Tag.class)",
       "Bash(javap -p /tmp/org/jaudiotagger/tag/id3/ID3v23Tag.class)",
       "Bash(javap -p /tmp/org/jaudiotagger/tag/FieldKey.class)",
-      "Bash(./gradlew installDebug 2>&1)"
+      "Bash(./gradlew installDebug 2>&1)",
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(./gradlew compileDebugKotlin)"
     ]
   }
 }

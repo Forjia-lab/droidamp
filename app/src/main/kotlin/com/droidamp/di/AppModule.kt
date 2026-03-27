@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.room.Room
 import com.droidamp.data.api.SubsonicApiService
 import com.droidamp.data.api.SubsonicAuthInterceptor
+import com.droidamp.data.local.db.AppDatabase
+import com.droidamp.data.local.db.GigBagDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -50,4 +53,11 @@ object AppModule {
     @Provides @Singleton
     fun provideSubsonicApiService(retrofit: Retrofit): SubsonicApiService =
         retrofit.create(SubsonicApiService::class.java)
+
+    @Provides @Singleton
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME).build()
+
+    @Provides @Singleton
+    fun provideGigBagDao(db: AppDatabase): GigBagDao = db.gigBagDao()
 }

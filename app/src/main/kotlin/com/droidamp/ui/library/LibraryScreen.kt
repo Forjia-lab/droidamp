@@ -1,13 +1,16 @@
 package com.droidamp.ui.library
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
@@ -23,10 +26,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.droidamp.data.local.db.GigBagTrackEntity
+import com.droidamp.data.local.db.GigBagWithCount
 import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Artist
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
+import com.droidamp.ui.gigbag.GigBagViewModel
+import com.droidamp.ui.gigbag.toTrack
+import com.droidamp.ui.navigation.NewBagDialog
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.ThemeViewModel
@@ -42,22 +50,36 @@ enum class BrowseMode { All, LocalOnly, Playlists }
 
 private enum class BrowseFilter { All, Playlists, GigBags, Albums, Artists }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     libraryViewModel: LibraryViewModel,
     playerViewModel:  PlayerViewModel,
     themeViewModel:   ThemeViewModel,
+    gigBagViewModel:  GigBagViewModel,
     mode:             BrowseMode = BrowseMode.All,
     onNavigateBack:   () -> Unit,
     onTrackPlayed:    () -> Unit = {},
 ) {
-    val uiState     by libraryViewModel.uiState.collectAsState()
-    val theme       by themeViewModel.theme.collectAsState()
+    val uiState by libraryViewModel.uiState.collectAsState()
+    val theme   by themeViewModel.theme.collectAsState()
 
-    // Browse All uses filter chips; LocalOnly uses browse tabs
     var browseTab    by remember { mutableStateOf(BrowseTab.Albums) }
     var browseFilter by remember { mutableStateOf(BrowseFilter.All) }
     var searchQuery  by remember { mutableStateOf("") }
+
+    // Gig Bag drill-down state (local to Browse All mode)
+    var selectedGigBag by remember { mutableStateOf<GigBagWithCount?>(null) }
+
+    // Gig Bag dialog states
+    var showCreateBagDialog by remember { mutableStateOf(false) }
+    var renameTarget        by remember { mutableStateOf<GigBagWithCount?>(null) }
+    var deleteTarget        by remember { mutableStateOf<GigBagWithCount?>(null) }
+
+    // Tell GigBagViewModel which bag's tracks to load
+    LaunchedEffect(selectedGigBag) {
+        gigBagViewModel.selectBag(selectedGigBag?.bag?.id)
+    }
 
     // Load data on first composition
     LaunchedEffect(mode) {
@@ -67,38 +89,110 @@ fun LibraryScreen(
         }
     }
 
-    // Load playlists when Playlists chip selected
     LaunchedEffect(browseFilter) {
-        if (browseFilter == BrowseFilter.Playlists) {
-            libraryViewModel.selectTab(LibraryTab.Playlists)
-        }
+        if (browseFilter == BrowseFilter.Playlists) libraryViewModel.selectTab(LibraryTab.Playlists)
     }
 
-    // Combined Navidrome + local data for Browse All mode
     val combinedAlbums  = remember(uiState.albums, uiState.localAlbums) {
         (uiState.albums + uiState.localAlbums).sortedBy { it.name }
     }
     val combinedArtists = remember(uiState.artists, uiState.localArtists) {
         (uiState.artists + uiState.localArtists).sortedBy { it.name }
     }
-    val combinedTracks  = remember(uiState.localAllTracks, uiState.tracks) {
-        uiState.localAllTracks + uiState.tracks
-    }
 
     val screenTitle = when {
+        selectedGigBag != null         -> selectedGigBag!!.bag.name
         uiState.selectedAlbum  != null -> uiState.selectedAlbum!!.name
         uiState.selectedArtist != null -> uiState.selectedArtist!!.name
         mode == BrowseMode.LocalOnly   -> "LOCAL STORAGE"
+        browseFilter == BrowseFilter.GigBags -> "GIG BAGS"
         else                           -> "BROWSE"
     }
+
+    // ── Dialogs ─────────────────────────────────────────────
+
+    if (showCreateBagDialog) {
+        NewBagDialog(
+            theme     = theme,
+            onConfirm = { name ->
+                gigBagViewModel.createBag(name)
+                showCreateBagDialog = false
+            },
+            onDismiss = { showCreateBagDialog = false },
+        )
+    }
+
+    renameTarget?.let { bag ->
+        var newName by remember(bag.bag.id) { mutableStateOf(bag.bag.name) }
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            containerColor   = theme.panel,
+            titleContentColor = theme.fg,
+            title = { Text("Rename", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+            text = {
+                BasicTextField(
+                    value         = newName,
+                    onValueChange = { newName = it },
+                    singleLine    = true,
+                    textStyle     = TextStyle(color = theme.fg, fontSize = 14.sp, fontFamily = FontFamily.Monospace),
+                    cursorBrush   = SolidColor(theme.accent),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(theme.surface, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        ) { inner() }
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newName.isNotBlank()) gigBagViewModel.renameBag(bag.bag, newName)
+                    renameTarget = null
+                }) { Text("Rename", color = theme.accent, fontFamily = FontFamily.Monospace) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) {
+                    Text("Cancel", color = theme.fg2, fontFamily = FontFamily.Monospace)
+                }
+            },
+        )
+    }
+
+    deleteTarget?.let { bag ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            containerColor   = theme.panel,
+            titleContentColor = theme.fg,
+            textContentColor  = theme.fg2,
+            title = { Text("Delete Gig Bag?", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+            text  = { Text("\"${bag.bag.name}\" and its ${bag.trackCount} track(s) will be removed.", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+            confirmButton = {
+                TextButton(onClick = {
+                    gigBagViewModel.deleteBag(bag.bag.id)
+                    if (selectedGigBag?.bag?.id == bag.bag.id) selectedGigBag = null
+                    deleteTarget = null
+                }) { Text("Delete", color = theme.red, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("Cancel", color = theme.fg2, fontFamily = FontFamily.Monospace)
+                }
+            },
+        )
+    }
+
+    // ── Main layout ─────────────────────────────────────────
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(theme.bg),
     ) {
-        // ── Header ────────────────────────────────────────────
-        val showBack = uiState.selectedAlbum != null || uiState.selectedArtist != null ||
+        // ── Header ──────────────────────────────────────────
+        val showBack = selectedGigBag != null ||
+                uiState.selectedAlbum != null || uiState.selectedArtist != null ||
                 mode == BrowseMode.LocalOnly
         Row(
             modifier = Modifier
@@ -109,12 +203,13 @@ fun LibraryScreen(
         ) {
             if (showBack) {
                 Text(
-                    text = "←",
-                    color = theme.accent,
+                    text     = "←",
+                    color    = theme.accent,
                     fontSize = 18.sp,
                     modifier = Modifier
                         .clickable {
                             when {
+                                selectedGigBag != null         -> selectedGigBag = null
                                 uiState.selectedAlbum  != null -> libraryViewModel.clearAlbumSelection()
                                 uiState.selectedArtist != null -> libraryViewModel.clearArtistSelection()
                                 else                           -> onNavigateBack()
@@ -142,9 +237,10 @@ fun LibraryScreen(
             }
         }
 
-        // ── Search bar (Browse All only, not drilling down) ───
+        // ── Search bar + filter chips (Browse All, not drilling down) ──
         val showSearchAndChips = mode != BrowseMode.LocalOnly &&
-                uiState.selectedAlbum == null && uiState.selectedArtist == null
+                uiState.selectedAlbum == null && uiState.selectedArtist == null &&
+                selectedGigBag == null
 
         if (showSearchAndChips) {
             Row(
@@ -175,21 +271,18 @@ fun LibraryScreen(
                 }
             }
 
-            // Filter chips
             LazyRow(
-                modifier              = Modifier
-                    .fillMaxWidth()
-                    .background(theme.panel),
+                modifier              = Modifier.fillMaxWidth().background(theme.panel),
                 contentPadding        = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 val chipShape = RoundedCornerShape(6.dp)
                 listOf(
-                    BrowseFilter.All      to "All",
+                    BrowseFilter.All       to "All",
                     BrowseFilter.Playlists to "Playlists",
-                    BrowseFilter.GigBags  to "Gig Bags",
-                    BrowseFilter.Albums   to "Albums",
-                    BrowseFilter.Artists  to "Artists",
+                    BrowseFilter.GigBags   to "Gig Bags",
+                    BrowseFilter.Albums    to "Albums",
+                    BrowseFilter.Artists   to "Artists",
                 ).forEach { (filter, label) ->
                     item {
                         val active = browseFilter == filter
@@ -212,7 +305,7 @@ fun LibraryScreen(
             }
         }
 
-        // ── Tab bar for LocalOnly mode ─────────────────────────
+        // ── Tab bar for LocalOnly mode ───────────────────────
         val showLocalTabs = mode == BrowseMode.LocalOnly &&
                 uiState.selectedAlbum == null && uiState.selectedArtist == null
 
@@ -223,36 +316,59 @@ fun LibraryScreen(
                     .background(theme.panel)
                     .padding(horizontal = 12.dp),
             ) {
-                listOf(
-                    "Albums"  to BrowseTab.Albums,
-                    "Artists" to BrowseTab.Artists,
-                    "Tracks"  to BrowseTab.Tracks,
-                ).forEach { (label, tab) ->
-                    val active = browseTab == tab
-                    Text(
-                        text       = label,
-                        color      = if (active) theme.accent else theme.fg2,
-                        fontSize   = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        modifier   = Modifier
-                            .clickable { browseTab = tab }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                    )
-                }
+                listOf("Albums" to BrowseTab.Albums, "Artists" to BrowseTab.Artists, "Tracks" to BrowseTab.Tracks)
+                    .forEach { (label, tab) ->
+                        val active = browseTab == tab
+                        Text(
+                            text       = label,
+                            color      = if (active) theme.accent else theme.fg2,
+                            fontSize   = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            modifier   = Modifier
+                                .clickable { browseTab = tab }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        )
+                    }
             }
         }
 
-        // ── Content ───────────────────────────────────────────
+        // ── Content ─────────────────────────────────────────
         Box(modifier = Modifier.weight(1f)) {
             when {
-                // ── Loading spinner ───────────────────────────
+                // Loading spinner
                 (uiState.isLoading || uiState.isLocalScanning) &&
-                        uiState.selectedAlbum == null && uiState.selectedArtist == null -> {
+                        uiState.selectedAlbum == null && uiState.selectedArtist == null &&
+                        selectedGigBag == null -> {
                     CircularProgressIndicator(color = theme.accent, modifier = Modifier.align(Alignment.Center))
                 }
 
-                // ── Album track list (drill-down) ─────────────
+                // Gig Bag track list (drill-down)
+                selectedGigBag != null -> {
+                    val bagEntities by gigBagViewModel.selectedBagTracks.collectAsState()
+                    val bagTracks = remember(bagEntities) { bagEntities.map { it.toTrack() } }
+                    if (bagEntities.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("This bag is empty", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            itemsIndexed(bagEntities, key = { _, e -> e.id }) { idx, entity ->
+                                GigBagTrackRow(
+                                    track    = bagTracks[idx],
+                                    theme    = theme,
+                                    onTap    = {
+                                        playerViewModel.playTracks(bagTracks, idx)
+                                        onTrackPlayed()
+                                    },
+                                    onRemove = { gigBagViewModel.removeTrackEntry(entity.id) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Album track list (drill-down)
                 uiState.selectedAlbum != null -> {
                     AlbumTrackList(
                         album        = uiState.selectedAlbum!!,
@@ -265,7 +381,7 @@ fun LibraryScreen(
                     )
                 }
 
-                // ── Artist album grid (drill-down) ────────────
+                // Artist album grid (drill-down)
                 uiState.selectedArtist != null -> {
                     AlbumGrid(
                         albums          = uiState.selectedArtistAlbums,
@@ -275,7 +391,7 @@ fun LibraryScreen(
                     )
                 }
 
-                // ── LocalOnly mode ────────────────────────────
+                // LocalOnly mode
                 mode == BrowseMode.LocalOnly -> {
                     when {
                         uiState.localTrackCount == 0 -> {
@@ -310,7 +426,7 @@ fun LibraryScreen(
                     }
                 }
 
-                // ── Browse All — Playlists chip ───────────────
+                // Browse All — Playlists chip
                 browseFilter == BrowseFilter.Playlists -> {
                     val filtered = if (searchQuery.isBlank()) uiState.playlists
                     else uiState.playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
@@ -339,14 +455,55 @@ fun LibraryScreen(
                     }
                 }
 
-                // ── Browse All — Gig Bags chip (placeholder) ──
+                // Browse All — Gig Bags chip
                 browseFilter == BrowseFilter.GigBags -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Gig Bags — coming soon", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    val bags by gigBagViewModel.bagsWithCount.collectAsState()
+                    val filtered = if (searchQuery.isBlank()) bags
+                    else bags.filter { it.bag.name.contains(searchQuery, ignoreCase = true) }
+
+                    Box(Modifier.fillMaxSize()) {
+                        if (filtered.isEmpty()) {
+                            Column(
+                                modifier = Modifier.align(Alignment.Center),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("No gig bags yet", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Tap + to create one", color = theme.fg2.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier       = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 80.dp),
+                            ) {
+                                items(filtered, key = { it.bag.id }) { bag ->
+                                    GigBagCard(
+                                        bag      = bag,
+                                        theme    = theme,
+                                        onTap    = { selectedGigBag = bag },
+                                        onRename = { renameTarget = bag },
+                                        onDelete = { deleteTarget = bag },
+                                    )
+                                }
+                            }
+                        }
+
+                        // FAB
+                        FloatingActionButton(
+                            onClick        = { showCreateBagDialog = true },
+                            modifier       = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(16.dp),
+                            containerColor = theme.accent,
+                            contentColor   = theme.bg,
+                            shape          = RoundedCornerShape(14.dp),
+                        ) {
+                            Text("+", fontSize = 22.sp, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
 
-                // ── Browse All — Artists chip ─────────────────
+                // Browse All — Artists chip
                 browseFilter == BrowseFilter.Artists -> {
                     val filtered = if (searchQuery.isBlank()) combinedArtists
                     else combinedArtists.filter { it.name.contains(searchQuery, ignoreCase = true) }
@@ -365,9 +522,9 @@ fun LibraryScreen(
                     }
                 }
 
-                // ── Browse All — Albums chip + All chip ───────
+                // Browse All — Albums + All chips
                 else -> {
-                    val sourceAlbums = if (browseFilter == BrowseFilter.Albums) combinedAlbums else combinedAlbums
+                    val sourceAlbums = combinedAlbums
                     val filtered = if (searchQuery.isBlank()) sourceAlbums
                     else sourceAlbums.filter {
                         it.name.contains(searchQuery, ignoreCase = true) ||
@@ -386,6 +543,118 @@ fun LibraryScreen(
             }
         }
     }
+}
+
+// ─── Gig Bag card ─────────────────────────────────────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GigBagCard(
+    bag:      GigBagWithCount,
+    theme:    DroidTheme,
+    onTap:    () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onTap, onLongClick = { showMenu = true })
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(theme.accent))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text       = bag.bag.name,
+                    color      = theme.fg,
+                    fontSize   = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${bag.trackCount} tracks",
+                    color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                )
+            }
+            Text(
+                text       = "GB",
+                color      = theme.green,
+                fontSize   = 8.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier   = Modifier
+                    .background(theme.green.copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("›", color = theme.fg2, fontSize = 14.sp)
+        }
+        DropdownMenu(
+            expanded         = showMenu,
+            onDismissRequest = { showMenu = false },
+            modifier         = Modifier.background(theme.panel),
+        ) {
+            DropdownMenuItem(
+                text    = { Text("Rename", color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                onClick = { showMenu = false; onRename() },
+            )
+            DropdownMenuItem(
+                text    = { Text("Delete", color = theme.red, fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                onClick = { showMenu = false; onDelete() },
+            )
+        }
+    }
+    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
+}
+
+// ─── Gig Bag track row (with long-press → Remove) ─────────────
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GigBagTrackRow(
+    track:    Track,
+    theme:    DroidTheme,
+    onTap:    () -> Unit,
+    onRemove: () -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onTap, onLongClick = { showMenu = true })
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
+                color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+            )
+        }
+        DropdownMenu(
+            expanded         = showMenu,
+            onDismissRequest = { showMenu = false },
+            modifier         = Modifier.background(theme.panel),
+        ) {
+            DropdownMenuItem(
+                text    = { Text("Remove from Gig Bag", color = theme.red, fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                onClick = { showMenu = false; onRemove() },
+            )
+        }
+    }
+    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
 }
 
 // ─── Album grid ───────────────────────────────────────────────
@@ -427,10 +696,9 @@ private fun AlbumGrid(
                     if (showSourceBadge) {
                         val isLocal = album.id.startsWith("local_album:")
                         Text(
-                            text = if (isLocal) "LOCAL" else "NAVI",
-                            color = if (isLocal) theme.green else theme.accent,
-                            fontSize = 7.sp,
-                            fontFamily = FontFamily.Monospace,
+                            text     = if (isLocal) "LOCAL" else "NAVI",
+                            color    = if (isLocal) theme.green else theme.accent,
+                            fontSize = 7.sp, fontFamily = FontFamily.Monospace,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(4.dp)
@@ -479,8 +747,8 @@ private fun ArtistRow(
         if (showSourceBadge) {
             val isLocal = artist.id.startsWith("local_artist:")
             Text(
-                text = if (isLocal) "LOCAL" else "NAVI",
-                color = if (isLocal) theme.green else theme.accent,
+                text     = if (isLocal) "LOCAL" else "NAVI",
+                color    = if (isLocal) theme.green else theme.accent,
                 fontSize = 7.sp, fontFamily = FontFamily.Monospace,
                 modifier = Modifier
                     .background(
@@ -521,8 +789,8 @@ private fun TrackRow(
                 if (showSourceBadge) {
                     val isLocal = track.source == TrackSource.LOCAL
                     Text(
-                        text = if (isLocal) "LOCAL" else "NAVI",
-                        color = if (isLocal) theme.green else theme.accent,
+                        text     = if (isLocal) "LOCAL" else "NAVI",
+                        color    = if (isLocal) theme.green else theme.accent,
                         fontSize = 7.sp, fontFamily = FontFamily.Monospace,
                         modifier = Modifier
                             .background(
@@ -579,8 +847,8 @@ private fun AlbumTrackList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
-                    color = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    text     = if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
+                    color    = theme.fg2, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                     modifier = Modifier.width(24.dp),
                 )
                 Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
@@ -589,7 +857,7 @@ private fun AlbumTrackList(
                     Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                 }
                 Text(
-                    text = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
+                    text  = "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
                     color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
                 )
             }
