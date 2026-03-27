@@ -7,44 +7,40 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
+import com.droidamp.ui.components.MiniPlayerBar
 import com.droidamp.ui.library.BrowseMode
 import com.droidamp.ui.library.LibraryScreen
 import com.droidamp.ui.library.LibraryViewModel
 import com.droidamp.ui.player.PlayerScreen
 import com.droidamp.ui.player.PlayerViewModel
-import com.droidamp.ui.search.SearchScreen
-import com.droidamp.ui.search.SearchViewModel
+import com.droidamp.ui.settings.SettingsScreen
 import com.droidamp.ui.settings.SettingsViewModel
+import com.droidamp.ui.sources.SourcesScreen
 import com.droidamp.ui.theme.ThemeViewModel
 
 // ─────────────────────────────────────────────────────────────
-//  Navigation — bottom nav: PLAY | BROWSE | LIBRARY | SEARCH
-//  PLAY     = main now-playing screen (PlayerScreen)
-//  BROWSE   = full library browser (LibraryScreen)
-//  LIBRARY  = library (LibraryScreen — playlists focus)
-//  SEARCH   = search screen (SearchScreen)
+//  Navigation — bottom nav: PLAY | SOURCES | BROWSE | SETTINGS
 // ─────────────────────────────────────────────────────────────
 
 sealed class Screen(val route: String, val label: String, val icon: String) {
-    object Play         : Screen("play",          "PLAY",    "▶")
-    object Browse       : Screen("browse",         "BROWSE",  "⊞")
-    object Library      : Screen("library",        "LIBRARY", "≡")
-    object Search       : Screen("search",         "SEARCH",  "⌕")
-    object LocalLibrary : Screen("local_library",  "",        "")
+    object Play         : Screen("play",          "PLAY",     "▶")
+    object Sources      : Screen("sources",        "SOURCES",  "⊞")
+    object Browse       : Screen("browse",         "BROWSE",   "≡")
+    object Settings     : Screen("settings",       "SETTINGS", "⚙")
+    object LocalLibrary : Screen("local_library",  "",         "")
 }
 
-private val bottomNavScreens = listOf(Screen.Play, Screen.Browse, Screen.Library, Screen.Search)
+private val bottomNavScreens = listOf(Screen.Play, Screen.Sources, Screen.Browse, Screen.Settings)
 
 @Composable
 fun DroidampNavGraph(
@@ -53,6 +49,7 @@ fun DroidampNavGraph(
     themeViewModel: ThemeViewModel,
 ) {
     val theme        by themeViewModel.theme.collectAsState()
+    val playerState  by playerViewModel.playerState.collectAsState()
     val backEntry    by navController.currentBackStackEntryAsState()
     val currentRoute = backEntry?.destination?.route
 
@@ -64,10 +61,24 @@ fun DroidampNavGraph(
         }
     }
 
+    // MiniPlayerBar is hidden on the Play tab (player already visible) and LocalLibrary
+    val showMiniBar = currentRoute != Screen.Play.route && currentRoute != Screen.LocalLibrary.route
+
     Scaffold(
         containerColor = theme.bg,
         bottomBar = {
             Column {
+                // MiniPlayerBar sits above the nav bar on non-Play tabs
+                if (showMiniBar) {
+                    MiniPlayerBar(
+                        playerState = playerState,
+                        theme       = theme,
+                        coverArtUrl = playerState.currentTrack?.coverArtId,
+                        onTap       = { navigateTo(Screen.Play.route) },
+                        onPlayPause = { playerViewModel.togglePlayPause() },
+                        onNext      = { playerViewModel.next() },
+                    )
+                }
                 HorizontalDivider(color = theme.border, thickness = 0.5.dp)
                 NavigationBar(
                     containerColor = theme.panel,
@@ -106,15 +117,18 @@ fun DroidampNavGraph(
             popExitTransition  = { fadeOut(tween(180)) },
         ) {
             composable(Screen.Play.route) {
-                val libraryViewModel: LibraryViewModel = hiltViewModel()
-                val searchViewModel:  SearchViewModel  = hiltViewModel()
-                val settingsViewModel: SettingsViewModel = hiltViewModel()
                 PlayerScreen(
-                    playerViewModel          = playerViewModel,
-                    themeViewModel           = themeViewModel,
-                    libraryViewModel         = libraryViewModel,
-                    searchViewModel          = searchViewModel,
+                    playerViewModel = playerViewModel,
+                    themeViewModel  = themeViewModel,
+                )
+            }
+            composable(Screen.Sources.route) {
+                val libraryViewModel: LibraryViewModel = hiltViewModel()
+                val settingsViewModel: SettingsViewModel = hiltViewModel()
+                SourcesScreen(
                     settingsViewModel        = settingsViewModel,
+                    libraryViewModel         = libraryViewModel,
+                    themeViewModel           = themeViewModel,
                     onNavigateToLocalLibrary = { navController.navigate(Screen.LocalLibrary.route) },
                 )
             }
@@ -125,17 +139,14 @@ fun DroidampNavGraph(
                     playerViewModel  = playerViewModel,
                     themeViewModel   = themeViewModel,
                     mode             = BrowseMode.All,
-                    onNavigateBack   = { navigateTo(Screen.Play.route) },
-                )
-            }
-            composable(Screen.Library.route) {
-                val libraryViewModel: LibraryViewModel = hiltViewModel()
-                LibraryScreen(
-                    libraryViewModel = libraryViewModel,
-                    playerViewModel  = playerViewModel,
-                    themeViewModel   = themeViewModel,
-                    mode             = BrowseMode.Playlists,
-                    onNavigateBack   = { navigateTo(Screen.Play.route) },
+                    onNavigateBack   = {},
+                    onTrackPlayed    = {
+                        navController.navigate(Screen.Play.route) {
+                            popUpTo(Screen.Play.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState    = true
+                        }
+                    },
                 )
             }
             composable(Screen.LocalLibrary.route) {
@@ -146,15 +157,21 @@ fun DroidampNavGraph(
                     themeViewModel   = themeViewModel,
                     mode             = BrowseMode.LocalOnly,
                     onNavigateBack   = { navController.popBackStack() },
+                    onTrackPlayed    = {
+                        navController.navigate(Screen.Play.route) {
+                            popUpTo(Screen.Play.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState    = true
+                        }
+                    },
                 )
             }
-            composable(Screen.Search.route) {
-                val searchViewModel: SearchViewModel = hiltViewModel()
-                SearchScreen(
-                    viewModel          = searchViewModel,
-                    playerViewModel    = playerViewModel,
-                    themeViewModel     = themeViewModel,
-                    onNavigateToPlayer = { navigateTo(Screen.Play.route) },
+            composable(Screen.Settings.route) {
+                val settingsViewModel: SettingsViewModel = hiltViewModel()
+                SettingsScreen(
+                    viewModel       = settingsViewModel,
+                    themeViewModel  = themeViewModel,
+                    playerViewModel = playerViewModel,
                 )
             }
         }

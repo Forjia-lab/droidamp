@@ -4,15 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,7 +27,6 @@ import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.Artist
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
-import com.droidamp.ui.components.MiniPlayerBar
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.ThemeViewModel
@@ -32,31 +35,42 @@ import com.droidamp.ui.theme.ThemeViewModel
 //  BrowseMode controls which content LibraryScreen shows:
 //    All       — Navidrome + Local combined (BROWSE tab)
 //    LocalOnly — Local files only (LOCAL STORAGE screen)
-//    Playlists — Navidrome playlists (LIBRARY tab)
+//    Playlists — kept for compat, treated same as All
 // ─────────────────────────────────────────────────────────────
 
 enum class BrowseMode { All, LocalOnly, Playlists }
+
+private enum class BrowseFilter { All, Playlists, GigBags, Albums, Artists }
 
 @Composable
 fun LibraryScreen(
     libraryViewModel: LibraryViewModel,
     playerViewModel:  PlayerViewModel,
     themeViewModel:   ThemeViewModel,
-    mode:             BrowseMode = BrowseMode.Playlists,
+    mode:             BrowseMode = BrowseMode.All,
     onNavigateBack:   () -> Unit,
+    onTrackPlayed:    () -> Unit = {},
 ) {
     val uiState     by libraryViewModel.uiState.collectAsState()
-    val playerState by playerViewModel.playerState.collectAsState()
     val theme       by themeViewModel.theme.collectAsState()
 
-    var browseTab by remember { mutableStateOf(BrowseTab.Albums) }
+    // Browse All uses filter chips; LocalOnly uses browse tabs
+    var browseTab    by remember { mutableStateOf(BrowseTab.Albums) }
+    var browseFilter by remember { mutableStateOf(BrowseFilter.All) }
+    var searchQuery  by remember { mutableStateOf("") }
 
-    // Load data based on mode on first composition
+    // Load data on first composition
     LaunchedEffect(mode) {
         when (mode) {
-            BrowseMode.All       -> libraryViewModel.loadBrowseData()
-            BrowseMode.LocalOnly -> libraryViewModel.scanLocalMedia()
-            BrowseMode.Playlists -> libraryViewModel.selectTab(LibraryTab.Playlists)
+            BrowseMode.All, BrowseMode.Playlists -> libraryViewModel.loadBrowseData()
+            BrowseMode.LocalOnly                 -> libraryViewModel.scanLocalMedia()
+        }
+    }
+
+    // Load playlists when Playlists chip selected
+    LaunchedEffect(browseFilter) {
+        if (browseFilter == BrowseFilter.Playlists) {
+            libraryViewModel.selectTab(LibraryTab.Playlists)
         }
     }
 
@@ -74,9 +88,8 @@ fun LibraryScreen(
     val screenTitle = when {
         uiState.selectedAlbum  != null -> uiState.selectedAlbum!!.name
         uiState.selectedArtist != null -> uiState.selectedArtist!!.name
-        mode == BrowseMode.All         -> "BROWSE"
         mode == BrowseMode.LocalOnly   -> "LOCAL STORAGE"
-        else                           -> "LIBRARY"
+        else                           -> "BROWSE"
     }
 
     Column(
@@ -85,6 +98,8 @@ fun LibraryScreen(
             .background(theme.bg),
     ) {
         // ── Header ────────────────────────────────────────────
+        val showBack = uiState.selectedAlbum != null || uiState.selectedArtist != null ||
+                mode == BrowseMode.LocalOnly
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,20 +107,22 @@ fun LibraryScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "←",
-                color = theme.accent,
-                fontSize = 18.sp,
-                modifier = Modifier
-                    .clickable {
-                        when {
-                            uiState.selectedAlbum  != null -> libraryViewModel.clearAlbumSelection()
-                            uiState.selectedArtist != null -> libraryViewModel.clearArtistSelection()
-                            else                           -> onNavigateBack()
+            if (showBack) {
+                Text(
+                    text = "←",
+                    color = theme.accent,
+                    fontSize = 18.sp,
+                    modifier = Modifier
+                        .clickable {
+                            when {
+                                uiState.selectedAlbum  != null -> libraryViewModel.clearAlbumSelection()
+                                uiState.selectedArtist != null -> libraryViewModel.clearArtistSelection()
+                                else                           -> onNavigateBack()
+                            }
                         }
-                    }
-                    .padding(end = 12.dp),
-            )
+                        .padding(end = 12.dp),
+                )
+            }
             Text(
                 text       = screenTitle,
                 color      = theme.accent,
@@ -125,11 +142,81 @@ fun LibraryScreen(
             }
         }
 
-        // ── Tab bar — Albums / Artists / Tracks ───────────────
-        val showTabs = mode != BrowseMode.Playlists &&
-                uiState.selectedAlbum  == null &&
-                uiState.selectedArtist == null
-        if (showTabs) {
+        // ── Search bar (Browse All only, not drilling down) ───
+        val showSearchAndChips = mode != BrowseMode.LocalOnly &&
+                uiState.selectedAlbum == null && uiState.selectedArtist == null
+
+        if (showSearchAndChips) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.surface)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("⌕", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
+                BasicTextField(
+                    value         = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier      = Modifier.weight(1f),
+                    textStyle     = TextStyle(color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                    cursorBrush   = SolidColor(theme.accent),
+                    singleLine    = true,
+                    decorationBox = { inner ->
+                        if (searchQuery.isEmpty()) {
+                            Text("Search…", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                        inner()
+                    },
+                )
+                if (searchQuery.isNotEmpty()) {
+                    Text("✕", color = theme.fg2, fontSize = 12.sp,
+                        modifier = Modifier.clickable { searchQuery = "" }.padding(start = 6.dp))
+                }
+            }
+
+            // Filter chips
+            LazyRow(
+                modifier              = Modifier
+                    .fillMaxWidth()
+                    .background(theme.panel),
+                contentPadding        = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val chipShape = RoundedCornerShape(6.dp)
+                listOf(
+                    BrowseFilter.All      to "All",
+                    BrowseFilter.Playlists to "Playlists",
+                    BrowseFilter.GigBags  to "Gig Bags",
+                    BrowseFilter.Albums   to "Albums",
+                    BrowseFilter.Artists  to "Artists",
+                ).forEach { (filter, label) ->
+                    item {
+                        val active = browseFilter == filter
+                        Box(
+                            modifier = Modifier
+                                .clip(chipShape)
+                                .background(if (active) theme.accent else theme.surface)
+                                .clickable { browseFilter = filter }
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                        ) {
+                            Text(
+                                text       = label,
+                                color      = if (active) theme.bg else theme.fg2,
+                                fontSize   = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Tab bar for LocalOnly mode ─────────────────────────
+        val showLocalTabs = mode == BrowseMode.LocalOnly &&
+                uiState.selectedAlbum == null && uiState.selectedArtist == null
+
+        if (showLocalTabs) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -173,7 +260,7 @@ fun LibraryScreen(
                         theme        = theme,
                         onTrackClick = { idx ->
                             playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
-                            onNavigateBack()
+                            onTrackPlayed()
                         },
                     )
                 }
@@ -188,15 +275,52 @@ fun LibraryScreen(
                     )
                 }
 
-                // ── Playlists mode ────────────────────────────
-                mode == BrowseMode.Playlists -> {
-                    if (uiState.playlists.isEmpty()) {
+                // ── LocalOnly mode ────────────────────────────
+                mode == BrowseMode.LocalOnly -> {
+                    when {
+                        uiState.localTrackCount == 0 -> {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No music found on device", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                        browseTab == BrowseTab.Albums -> {
+                            AlbumGrid(albums = uiState.localAlbums, theme = theme, showSourceBadge = false) {
+                                libraryViewModel.loadAlbumTracks(it)
+                            }
+                        }
+                        browseTab == BrowseTab.Artists -> {
+                            LazyColumn(Modifier.fillMaxSize()) {
+                                items(uiState.localArtists) { artist ->
+                                    ArtistRow(artist, theme, showSourceBadge = false) {
+                                        libraryViewModel.loadArtistAlbums(artist)
+                                    }
+                                }
+                            }
+                        }
+                        else -> {  // BrowseTab.Tracks
+                            LazyColumn(Modifier.fillMaxSize()) {
+                                itemsIndexed(uiState.localAllTracks) { idx, track ->
+                                    TrackRow(track, theme, showSourceBadge = false) {
+                                        playerViewModel.playTracks(uiState.localAllTracks, idx)
+                                        onTrackPlayed()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Browse All — Playlists chip ───────────────
+                browseFilter == BrowseFilter.Playlists -> {
+                    val filtered = if (searchQuery.isBlank()) uiState.playlists
+                    else uiState.playlists.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                    if (filtered.isEmpty()) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text("No playlists", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
-                            items(uiState.playlists) { pl ->
+                            items(filtered) { pl ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -215,106 +339,52 @@ fun LibraryScreen(
                     }
                 }
 
-                // ── Local Only mode ───────────────────────────
-                mode == BrowseMode.LocalOnly -> {
-                    when {
-                        uiState.localTrackCount == 0 -> {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No music found on device", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                            }
+                // ── Browse All — Gig Bags chip (placeholder) ──
+                browseFilter == BrowseFilter.GigBags -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Gig Bags — coming soon", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                // ── Browse All — Artists chip ─────────────────
+                browseFilter == BrowseFilter.Artists -> {
+                    val filtered = if (searchQuery.isBlank()) combinedArtists
+                    else combinedArtists.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                    if (filtered.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No artists found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
-                        browseTab == BrowseTab.Albums -> {
-                            AlbumGrid(
-                                albums       = uiState.localAlbums,
-                                theme        = theme,
-                                showSourceBadge = false,
-                                onAlbumClick = { libraryViewModel.loadAlbumTracks(it) },
-                            )
-                        }
-                        browseTab == BrowseTab.Artists -> {
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                items(uiState.localArtists) { artist ->
-                                    ArtistRow(artist, theme, showSourceBadge = false) {
-                                        libraryViewModel.loadArtistAlbums(artist)
-                                    }
-                                }
-                            }
-                        }
-                        else -> {  // BrowseTab.Tracks
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                itemsIndexed(uiState.localAllTracks) { idx, track ->
-                                    TrackRow(track, theme, showSourceBadge = false) {
-                                        playerViewModel.playTracks(uiState.localAllTracks, idx)
-                                        onNavigateBack()
-                                    }
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            items(filtered) { artist ->
+                                ArtistRow(artist, theme, showSourceBadge = true) {
+                                    libraryViewModel.loadArtistAlbums(artist)
                                 }
                             }
                         }
                     }
                 }
 
-                // ── Browse All mode ───────────────────────────
+                // ── Browse All — Albums chip + All chip ───────
                 else -> {
-                    when (browseTab) {
-                        BrowseTab.Albums -> {
-                            if (combinedAlbums.isEmpty()) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("No albums found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                }
-                            } else {
-                                AlbumGrid(
-                                    albums          = combinedAlbums,
-                                    theme           = theme,
-                                    showSourceBadge = true,
-                                    onAlbumClick    = { libraryViewModel.loadAlbumTracks(it) },
-                                )
-                            }
+                    val sourceAlbums = if (browseFilter == BrowseFilter.Albums) combinedAlbums else combinedAlbums
+                    val filtered = if (searchQuery.isBlank()) sourceAlbums
+                    else sourceAlbums.filter {
+                        it.name.contains(searchQuery, ignoreCase = true) ||
+                        it.artist.contains(searchQuery, ignoreCase = true)
+                    }
+                    if (filtered.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No albums found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
-                        BrowseTab.Artists -> {
-                            if (combinedArtists.isEmpty()) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("No artists found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                }
-                            } else {
-                                LazyColumn(Modifier.fillMaxSize()) {
-                                    items(combinedArtists) { artist ->
-                                        ArtistRow(artist, theme, showSourceBadge = true) {
-                                            libraryViewModel.loadArtistAlbums(artist)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        BrowseTab.Tracks -> {
-                            if (combinedTracks.isEmpty()) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("No tracks found", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                }
-                            } else {
-                                LazyColumn(Modifier.fillMaxSize()) {
-                                    itemsIndexed(combinedTracks) { idx, track ->
-                                        TrackRow(track, theme, showSourceBadge = true) {
-                                            playerViewModel.playTracks(combinedTracks, idx)
-                                            onNavigateBack()
-                                        }
-                                    }
-                                }
-                            }
+                    } else {
+                        AlbumGrid(albums = filtered, theme = theme, showSourceBadge = true) {
+                            libraryViewModel.loadAlbumTracks(it)
                         }
                     }
                 }
             }
         }
-
-        // ── Mini Player Bar ───────────────────────────────────
-        MiniPlayerBar(
-            playerState = playerState,
-            theme       = theme,
-            coverArtUrl = null,
-            onTap       = onNavigateBack,
-            onPlayPause = { playerViewModel.togglePlayPause() },
-            onNext      = { playerViewModel.next() },
-        )
     }
 }
 
@@ -360,7 +430,7 @@ private fun AlbumGrid(
                             text = if (isLocal) "LOCAL" else "NAVI",
                             color = if (isLocal) theme.green else theme.accent,
                             fontSize = 7.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontFamily = FontFamily.Monospace,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(4.dp)
@@ -373,12 +443,12 @@ private fun AlbumGrid(
                     }
                 }
                 Spacer(Modifier.height(5.dp))
-                Text(album.name, color = theme.fg, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                Text(album.name, color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
-                Text(album.artist, color = theme.fg2, fontSize = 9.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                Text(album.artist, color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
                 if (album.year > 0) Text(album.year.toString(), color = theme.fg2.copy(alpha = 0.5f), fontSize = 8.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.padding(horizontal = 6.dp))
+                    fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 6.dp))
             }
         }
     }

@@ -74,6 +74,9 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // ID3 tag reading
+    implementation(libs.jaudiotagger)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

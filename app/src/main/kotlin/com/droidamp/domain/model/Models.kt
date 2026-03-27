@@ -14,6 +14,8 @@ data class Track(
     val coverArtId: String? = null,
     val streamUrl: String = "",
     val source: TrackSource = TrackSource.NAVIDROME,
+    val bpm: String? = null,
+    val camelotKey: String? = null,
 )
 
 data class Album(

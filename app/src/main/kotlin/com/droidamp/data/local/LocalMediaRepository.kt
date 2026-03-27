@@ -19,6 +19,7 @@ import javax.inject.Singleton
 @Singleton
 class LocalMediaRepository @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val metadataScanner: TrackMetadataScanner,
 ) {
     companion object {
         val REQUIRED_PERMISSION: String get() =
@@ -50,6 +51,7 @@ class LocalMediaRepository @Inject constructor(
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.SIZE,
             MediaStore.Audio.Media.MIME_TYPE,
+            @Suppress("DEPRECATION") MediaStore.Audio.Media.DATA,
         )
         val sel     = "${MediaStore.Audio.Media.IS_MUSIC} = 1 AND ${MediaStore.Audio.Media.DURATION} > 30000"
         val sort    = "${MediaStore.Audio.Media.ARTIST} ASC, ${MediaStore.Audio.Media.ALBUM} ASC, ${MediaStore.Audio.Media.TRACK} ASC"
@@ -65,6 +67,8 @@ class LocalMediaRepository @Inject constructor(
             val yearCol     = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val sizeCol     = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val mimeCol     = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+            @Suppress("DEPRECATION")
+            val dataCol     = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
 
             while (cursor.moveToNext()) {
                 val id      = cursor.getLong(idCol)
@@ -75,7 +79,14 @@ class LocalMediaRepository @Inject constructor(
                 val coverUri  = ContentUris
                     .withAppendedId(ALBUM_ART_URI, albumId)
                     .toString()
-                val suffix = cursor.getString(mimeCol)?.substringAfterLast('/') ?: "mp3"
+                val suffix   = cursor.getString(mimeCol)?.substringAfterLast('/') ?: "mp3"
+                // Derive file extension: prefer the actual filename (DATA column) over
+                // the MIME subtype, which can be "mpeg" instead of "mp3" or "x-wav".
+                val filePath  = if (dataCol >= 0) cursor.getString(dataCol) else null
+                val extension = filePath?.substringAfterLast('.')?.lowercase()
+                    ?.takeIf { it.isNotBlank() && it.length <= 5 }
+                    ?: suffix.removePrefix("x-").lowercase()
+                val (bpm, camelotKey) = metadataScanner.scan(streamUri, extension)
 
                 tracks.add(Track(
                     id          = "local:$id",
@@ -91,6 +102,8 @@ class LocalMediaRepository @Inject constructor(
                     coverArtId  = coverUri,
                     streamUrl   = streamUri,
                     source      = TrackSource.LOCAL,
+                    bpm         = bpm,
+                    camelotKey  = camelotKey,
                 ))
             }
         }

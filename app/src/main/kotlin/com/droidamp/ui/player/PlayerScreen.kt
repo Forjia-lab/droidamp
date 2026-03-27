@@ -1,31 +1,24 @@
 package com.droidamp.ui.player
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
@@ -38,62 +31,45 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import coil.compose.AsyncImage
-import com.droidamp.data.local.LocalMediaRepository
-import com.droidamp.domain.model.Album
 import com.droidamp.domain.model.PlayerState
+import com.droidamp.domain.model.RepeatMode
 import com.droidamp.domain.model.Track
 import com.droidamp.domain.model.TrackSource
-import com.droidamp.ui.library.LibraryViewModel
-import com.droidamp.ui.search.SearchViewModel
-import com.droidamp.ui.settings.SettingsViewModel
 import com.droidamp.ui.theme.DroidTheme
 import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
 import com.droidamp.ui.visualizer.VisualizerCanvas
 
 // ─────────────────────────────────────────────────────────────
-//  PlayerScreen — Winamp/AIMP-style full player
+//  PlayerScreen — PLAY tab
 // ─────────────────────────────────────────────────────────────
-
-enum class PlayerTab { QUEUE, LIBRARY, SOURCES, SEARCH }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
-    playerViewModel:          PlayerViewModel,
-    themeViewModel:           ThemeViewModel,
-    libraryViewModel:         LibraryViewModel,
-    searchViewModel:          SearchViewModel,
-    settingsViewModel:        SettingsViewModel,
-    onNavigateToLocalLibrary: () -> Unit = {},
+    playerViewModel: PlayerViewModel,
+    themeViewModel:  ThemeViewModel,
 ) {
     val theme       by themeViewModel.theme.collectAsState()
     val playerState by playerViewModel.playerState.collectAsState()
     val fftData     by playerViewModel.fftData.collectAsState()
     val vizMode     by playerViewModel.vizMode.collectAsState()
     val vizFull     by playerViewModel.isVizFullScreen.collectAsState()
-    val eqBands     by playerViewModel.eqBands.collectAsState()
-    val activePreset by playerViewModel.activePreset.collectAsState()
     val starredIds  by playerViewModel.starredIds.collectAsState()
 
-    var activeTab         by remember { mutableStateOf(PlayerTab.QUEUE) }
-    var showThemeSheet    by remember { mutableStateOf(false) }
-    var showSettingsSheet by remember { mutableStateOf(false) }
+    var showThemeSheet by remember { mutableStateOf(false) }
+
+    if (showThemeSheet) {
+        ThemePickerSheet(themeViewModel = themeViewModel, theme = theme, onDismiss = { showThemeSheet = false })
+    }
 
     // ── Full-screen visualizer overlay ────────────────────────
     if (vizFull) {
@@ -118,33 +94,10 @@ fun PlayerScreen(
         return
     }
 
-    // ── Theme picker sheet ────────────────────────────────────
-    if (showThemeSheet) {
-        ThemePickerSheet(
-            themeViewModel = themeViewModel,
-            theme          = theme,
-            onDismiss      = { showThemeSheet = false },
-        )
-    }
-
-    // ── Settings bottom sheet ──────────────────────────────────
-    if (showSettingsSheet) {
-        SettingsSheet(
-            settingsViewModel = settingsViewModel,
-            themeViewModel    = themeViewModel,
-            theme             = theme,
-            onDismiss         = { showSettingsSheet = false },
-        )
-    }
-
     Column(Modifier.fillMaxSize().background(theme.bg)) {
 
         // 1. Top bar — 48dp ────────────────────────────────────
-        TopBar(
-            theme          = theme,
-            onThemeTap     = { showThemeSheet = true },
-            onSettingsTap  = { showSettingsSheet = true },
-        )
+        TopBar(theme = theme, onMenuTap = { showThemeSheet = true })
 
         // 2. Mini now-playing bar — 80dp ───────────────────────
         MiniNowPlayingBar(
@@ -204,48 +157,13 @@ fun PlayerScreen(
             onPlayPause = { playerViewModel.togglePlayPause() },
             onNext      = { playerViewModel.next() },
             onShuffle   = { playerViewModel.toggleShuffle() },
-            onQueue     = { activeTab = PlayerTab.QUEUE },
+            onRepeat    = { playerViewModel.toggleRepeat() },
         )
 
-        // 6. 10-band EQ — 96dp ─────────────────────────────────
-        EqSection(
-            bands         = eqBands,
-            theme         = theme,
-            activePreset  = activePreset,
-            onBandChange  = { idx, level -> playerViewModel.setEqBand(idx, level) },
-            onPreset      = { playerViewModel.applyPreset(it) },
-        )
-
-        // 7. Tab row — 36dp ────────────────────────────────────
-        PlayerTabRow(activeTab = activeTab, theme = theme, onTab = { activeTab = it })
-        HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-
-        // 8. Tab content — weight(1f) ──────────────────────────
+        // 6. Queue — weight(1f) ────────────────────────────────
+        HorizontalDivider(color = theme.border, thickness = 1.dp)
         Box(Modifier.weight(1f)) {
-            AnimatedContent(
-                targetState    = activeTab,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label          = "playerTabContent",
-            ) { tab ->
-                when (tab) {
-                    PlayerTab.QUEUE   -> PlaylistTab(playerState, theme) { playerViewModel.seekToQueueItem(it) }
-                    PlayerTab.LIBRARY -> LibraryTabContent(libraryViewModel, playerViewModel, theme)
-                    PlayerTab.SOURCES -> SourcesTab(
-                        settingsViewModel        = settingsViewModel,
-                        libraryViewModel         = libraryViewModel,
-                        playerViewModel          = playerViewModel,
-                        theme                    = theme,
-                        onTrackPlayed            = { activeTab = PlayerTab.QUEUE },
-                        onNavigateToLocalLibrary = onNavigateToLocalLibrary,
-                    )
-                    PlayerTab.SEARCH  -> SearchTabContent(
-                        searchViewModel = searchViewModel,
-                        playerViewModel = playerViewModel,
-                        theme           = theme,
-                        onTrackPlayed   = { activeTab = PlayerTab.QUEUE },
-                    )
-                }
-            }
+            PlaylistTab(playerState, theme) { playerViewModel.seekToQueueItem(it) }
         }
     }
 }
@@ -253,11 +171,7 @@ fun PlayerScreen(
 // ─── 1. Top bar — 48dp ───────────────────────────────────────
 
 @Composable
-private fun TopBar(
-    theme:         DroidTheme,
-    onThemeTap:    () -> Unit,
-    onSettingsTap: () -> Unit,
-) {
+private fun TopBar(theme: DroidTheme, onMenuTap: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -274,10 +188,9 @@ private fun TopBar(
             fontFamily = FontFamily.Monospace,
             modifier   = Modifier.weight(1f),
         )
-        // 3 colored squares → theme picker
         Row(
             modifier              = Modifier
-                .clickable(onClick = onThemeTap)
+                .clickable(onClick = onMenuTap)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment     = Alignment.CenterVertically,
@@ -286,15 +199,6 @@ private fun TopBar(
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.vizBar))
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(theme.eqBar))
         }
-        // Gear → server settings
-        Text(
-            text     = "⚙",
-            color    = theme.fg2,
-            fontSize = 14.sp,
-            modifier = Modifier
-                .clickable(onClick = onSettingsTap)
-                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
-        )
     }
 }
 
@@ -311,33 +215,32 @@ private fun MiniNowPlayingBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(80.dp)
                 .background(theme.surface)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Album art — 64dp
+            // Album art — 92dp
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .size(92.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(theme.panel),
             ) {
                 if (track?.coverArtId != null) {
                     AsyncImage(model = track.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
                 } else {
-                    Text("♫", color = theme.accent, fontSize = 24.sp, modifier = Modifier.align(Alignment.Center))
+                    Text("♫", color = theme.accent, fontSize = 36.sp, modifier = Modifier.align(Alignment.Center))
                 }
             }
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text       = track?.title ?: "No track loaded",
                     color      = theme.fg,
-                    fontSize   = 14.sp,
+                    fontSize   = 15.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    maxLines   = 1,
+                    maxLines   = 2,
                     overflow   = TextOverflow.Ellipsis,
                 )
                 val artistYear = buildString {
@@ -348,27 +251,26 @@ private fun MiniNowPlayingBar(
                     Text(
                         text       = artistYear,
                         color      = theme.fg2,
-                        fontSize   = 11.sp,
+                        fontSize   = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         maxLines   = 1,
                         overflow   = TextOverflow.Ellipsis,
                     )
                 }
                 if (track != null) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(top = 2.dp),
-                    ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         SourceBadge(track.source, theme)
                         if (track.suffix.isNotEmpty()) FormatBadge(track.suffix.uppercase(), theme)
+                        if (!track.bpm.isNullOrBlank()) MicroBadge("${track.bpm} BPM", theme.accent)
+                        if (!track.camelotKey.isNullOrBlank()) MicroBadge(track.camelotKey, theme.accent)
                     }
                 }
             }
             Text(
                 text     = if (isStarred) "♥" else "♡",
                 color    = if (isStarred) theme.red else theme.fg2,
-                fontSize = 22.sp,
-                modifier = Modifier.padding(start = 8.dp).clickable(onClick = onStar),
+                fontSize = 24.sp,
+                modifier = Modifier.padding(start = 10.dp).clickable(onClick = onStar),
             )
         }
         HorizontalDivider(color = theme.border, thickness = 1.dp)
@@ -415,12 +317,12 @@ private fun SeekBarSection(
     val progress = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
 
     Column(
-        modifier              = Modifier
+        modifier            = Modifier
             .fillMaxWidth()
             .height(40.dp)
             .background(theme.surface)
             .padding(horizontal = 16.dp),
-        verticalArrangement   = Arrangement.Center,
+        verticalArrangement = Arrangement.Center,
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(msToTime(position), color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
@@ -471,22 +373,24 @@ private fun TransportRow(
     onPlayPause: () -> Unit,
     onNext:      () -> Unit,
     onShuffle:   () -> Unit,
-    onQueue:     () -> Unit,
+    onRepeat:    () -> Unit,
 ) {
     val btnShape = RoundedCornerShape(8.dp)
 
     @Composable
     fun HwButton(
         onClick:     () -> Unit,
-        borderColor: androidx.compose.ui.graphics.Color = theme.border,
-        bgColor:     androidx.compose.ui.graphics.Color = theme.surface,
+        borderColor: Color = theme.border,
+        bgColor:     Color = theme.surface,
+        width:       androidx.compose.ui.unit.Dp = 52.dp,
+        height:      androidx.compose.ui.unit.Dp = 44.dp,
         content:     @Composable () -> Unit,
     ) {
         val interactionSource = remember { MutableInteractionSource() }
         val isPressed by interactionSource.collectIsPressedAsState()
         Box(
             modifier = Modifier
-                .size(width = 52.dp, height = 44.dp)
+                .size(width = width, height = height)
                 .clip(btnShape)
                 .background(if (isPressed) theme.panel else bgColor)
                 .border(1.dp, borderColor, btnShape)
@@ -516,11 +420,13 @@ private fun TransportRow(
         HwButton(onClick = onPrev) {
             Text("◀◀", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
-        // Play/Pause
+        // Play/Pause — larger than prev/next
         HwButton(
             onClick     = onPlayPause,
             bgColor     = theme.playBg,
             borderColor = theme.playBorder,
+            width       = 70.dp,
+            height      = 54.dp,
         ) {
             if (playerState.isPlaying) {
                 val accentColor = theme.accent
@@ -528,12 +434,8 @@ private fun TransportRow(
                     val barW = size.width * 0.28f
                     val barH = size.height * 0.75f
                     val top  = (size.height - barH) / 2f
-                    drawRect(color = accentColor,
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, top),
-                        size    = androidx.compose.ui.geometry.Size(barW, barH))
-                    drawRect(color = accentColor,
-                        topLeft = androidx.compose.ui.geometry.Offset(size.width - barW, top),
-                        size    = androidx.compose.ui.geometry.Size(barW, barH))
+                    drawRect(color = accentColor, topLeft = Offset(0f, top), size = Size(barW, barH))
+                    drawRect(color = accentColor, topLeft = Offset(size.width - barW, top), size = Size(barW, barH))
                 }
             } else {
                 Text("▶\uFE0E", color = theme.accent, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
@@ -543,435 +445,22 @@ private fun TransportRow(
         HwButton(onClick = onNext) {
             Text("▶▶", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
-        // Queue
-        HwButton(onClick = onQueue) {
-            Text("☰", color = theme.fg, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
-        }
-    }
-}
-
-// ─── 6. 10-band EQ — 72dp ────────────────────────────────────
-
-private val EQ_LABELS = listOf("60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K")
-
-@Composable
-private fun EqSection(
-    bands:        List<EqBand>,
-    theme:        DroidTheme,
-    activePreset: String,
-    onBandChange: (Int, Short) -> Unit,
-    onPreset:     (String) -> Unit,
-) {
-    val chipShape = RoundedCornerShape(6.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(96.dp)
-            .background(theme.panel)
-            .padding(horizontal = 14.dp, vertical = 4.dp),
-    ) {
-        // ── Preset chips ──────────────────────────────────────
-        LazyRow(
-            modifier            = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        // Repeat
+        HwButton(
+            onClick     = onRepeat,
+            borderColor = if (playerState.repeatMode != RepeatMode.OFF) theme.accent else theme.border,
         ) {
-            items(PlayerViewModel.EQ_PRESETS.keys.toList()) { name ->
-                val active = name == activePreset
-                Box(
-                    modifier = Modifier
-                        .clip(chipShape)
-                        .background(if (active) theme.accent else theme.surface)
-                        .clickable { onPreset(name) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text       = name,
-                        color      = if (active) theme.bg else theme.fg2,
-                        fontSize   = 7.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
+            val (repeatIcon, repeatColor) = when (playerState.repeatMode) {
+                RepeatMode.OFF -> "↻"  to theme.fg
+                RepeatMode.ALL -> "↻"  to theme.accent
+                RepeatMode.ONE -> "↻1" to theme.accent
             }
-        }
-        Spacer(Modifier.height(3.dp))
-        // ── EQ bars ───────────────────────────────────────────
-        if (bands.isNotEmpty()) {
-            Row(
-                modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                repeat(10) { displayIdx ->
-                    val deviceIdx = (displayIdx.toFloat() / 10f * bands.size).toInt().coerceIn(0, bands.size - 1)
-                    val band = bands[deviceIdx]
-                    EqBandColumn(
-                        band          = band,
-                        label         = EQ_LABELS[displayIdx],
-                        theme         = theme,
-                        onLevelChange = { onBandChange(band.index, it) },
-                    )
-                }
-            }
+            Text(repeatIcon, color = repeatColor, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
 
-@Composable
-private fun EqBandColumn(
-    band:          EqBand,
-    label:         String,
-    theme:         DroidTheme,
-    onLevelChange: (Short) -> Unit,
-) {
-    val barHeightDp = 32.dp
-    val normalized  = if (band.maxLevel != band.minLevel)
-        (band.level - band.minLevel).toFloat() / (band.maxLevel - band.minLevel)
-    else 0.5f
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Canvas(
-            modifier = Modifier
-                .width(10.dp)
-                .height(barHeightDp)
-                .clip(RoundedCornerShape(5.dp))
-                .pointerInput(band.minLevel, band.maxLevel) {
-                    detectVerticalDragGestures { change, _ ->
-                        val levelRange = (band.maxLevel - band.minLevel).toFloat()
-                        val newNorm = (1f - change.position.y / size.height.toFloat()).coerceIn(0f, 1f)
-                        val newLevel = (band.minLevel + newNorm * levelRange).toInt()
-                            .coerceIn(band.minLevel.toInt(), band.maxLevel.toInt()).toShort()
-                        onLevelChange(newLevel)
-                    }
-                }
-                .pointerInput(band.minLevel, band.maxLevel) {
-                    detectTapGestures { offset ->
-                        val levelRange = (band.maxLevel - band.minLevel).toFloat()
-                        val newNorm = (1f - offset.y / size.height.toFloat()).coerceIn(0f, 1f)
-                        val newLevel = (band.minLevel + newNorm * levelRange).toInt()
-                            .coerceIn(band.minLevel.toInt(), band.maxLevel.toInt()).toShort()
-                        onLevelChange(newLevel)
-                    }
-                },
-        ) {
-            // Background
-            drawRect(color = theme.surface)
-            val centerY = size.height / 2f
-            // Always-visible center tick in eqBar so bars look themed even at 0dB
-            drawLine(
-                color       = theme.eqBar.copy(alpha = 0.35f),
-                start       = Offset(0f, centerY),
-                end         = Offset(size.width, centerY),
-                strokeWidth = 2f,
-            )
-            // Active bar (eqBar color)
-            val barTop: Float
-            val barBottom: Float
-            if (normalized >= 0.5f) {
-                barTop    = centerY - (normalized - 0.5f) * 2f * centerY
-                barBottom = centerY
-            } else {
-                barTop    = centerY
-                barBottom = centerY + (0.5f - normalized) * 2f * (size.height - centerY)
-            }
-            if (barBottom > barTop) {
-                drawRect(color = theme.eqBar, topLeft = Offset(0f, barTop), size = Size(size.width, barBottom - barTop))
-            }
-        }
-        Spacer(Modifier.height(2.dp))
-        Text(label, color = theme.fg2, fontSize = 6.sp, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
-    }
-}
-
-// ─── 7. Tab row — 36dp, equal-width ──────────────────────────
-
-@Composable
-private fun PlayerTabRow(
-    activeTab: PlayerTab,
-    theme:     DroidTheme,
-    onTab:     (PlayerTab) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .background(theme.panel),
-    ) {
-        PlayerTab.entries.forEach { tab ->
-            val active = tab == activeTab
-            Box(
-                modifier         = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onTab(tab) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text       = tab.name,
-                        color      = if (active) theme.accent else theme.fg2,
-                        fontSize   = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        textAlign  = TextAlign.Center,
-                    )
-                    if (active) {
-                        Spacer(Modifier.height(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .height(2.dp)
-                                .background(theme.accent, RoundedCornerShape(1.dp)),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ─── Theme picker sheet ───────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ThemePickerSheet(
-    themeViewModel: ThemeViewModel,
-    theme:          DroidTheme,
-    onDismiss:      () -> Unit,
-) {
-    val currentTheme by themeViewModel.theme.collectAsState()
-    val sheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState       = sheetState,
-        containerColor   = theme.panel,
-        contentColor     = theme.fg,
-    ) {
-        Text(
-            text       = "THEMES",
-            color      = theme.fg2,
-            fontSize   = 9.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier   = Modifier.padding(start = 16.dp, bottom = 10.dp),
-        )
-        LazyRow(
-            modifier              = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp),
-            contentPadding        = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(DroidThemes.all) { t ->
-                val isActive = t.id == currentTheme.id
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier            = Modifier.clickable { themeViewModel.setTheme(t) },
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(t.bg)
-                            .then(if (isActive) Modifier.border(2.dp, currentTheme.accent, RoundedCornerShape(8.dp)) else Modifier),
-                    ) {
-                        Box(
-                            Modifier
-                                .size(22.dp)
-                                .align(Alignment.Center)
-                                .clip(CircleShape)
-                                .background(t.accent)
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text       = t.displayName.take(9),
-                        color      = if (isActive) currentTheme.accent else currentTheme.fg2,
-                        fontSize   = 7.sp,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign  = TextAlign.Center,
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Settings bottom sheet ────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsSheet(
-    settingsViewModel: SettingsViewModel,
-    themeViewModel:    ThemeViewModel,
-    theme:             DroidTheme,
-    onDismiss:         () -> Unit,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val url        by settingsViewModel.url.collectAsState()
-    val username   by settingsViewModel.username.collectAsState()
-    val password   by settingsViewModel.password.collectAsState()
-    val pingStatus by settingsViewModel.pingStatus.collectAsState()
-
-    var showPassword by remember { mutableStateOf(false) }
-
-    val isConnected = pingStatus?.startsWith("✓") == true
-    val isPending   = pingStatus == "connecting…"
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState       = sheetState,
-        containerColor   = theme.panel,
-        contentColor     = theme.fg,
-    ) {
-        LazyColumn(
-            modifier       = Modifier.fillMaxWidth().navigationBarsPadding(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            // ── Server settings ───────────────────────────────
-            item {
-                Text(
-                    text       = "SERVER",
-                    color      = theme.fg2,
-                    fontSize   = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier   = Modifier.padding(bottom = 8.dp),
-                )
-            }
-            item {
-                SheetField("SERVER URL", url, theme) { settingsViewModel.setUrl(it) }
-                Spacer(Modifier.height(6.dp))
-            }
-            item {
-                SheetField("USERNAME", username, theme) { settingsViewModel.setUsername(it) }
-                Spacer(Modifier.height(6.dp))
-            }
-            item {
-                // Password with proper VisualTransformation
-                Column {
-                    Text("PASSWORD", color = theme.fg2, fontSize = 8.sp, fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(bottom = 2.dp))
-                    Row(
-                        modifier          = Modifier
-                            .fillMaxWidth()
-                            .background(theme.bg, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BasicTextField(
-                            value                = password,
-                            onValueChange        = { settingsViewModel.setPassword(it) },
-                            modifier             = Modifier.weight(1f),
-                            textStyle            = TextStyle(color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
-                            cursorBrush          = SolidColor(theme.accent),
-                            singleLine           = true,
-                            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                        )
-                        Text(
-                            text     = if (showPassword) "●" else "○",
-                            color    = theme.fg2,
-                            fontSize = 10.sp,
-                            modifier = Modifier.clickable { showPassword = !showPassword },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .background(theme.accent.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
-                            .clickable { settingsViewModel.save() }
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                    ) {
-                        Text("SAVE", color = theme.accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    }
-                    if (pingStatus != null) {
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            text     = pingStatus!!,
-                            color    = when {
-                                isConnected -> theme.green
-                                isPending   -> theme.yellow
-                                else        -> theme.red
-                            },
-                            fontSize   = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                Spacer(Modifier.height(12.dp))
-            }
-            // ── Theme picker ──────────────────────────────────
-            item {
-                val currentTheme by themeViewModel.theme.collectAsState()
-                Text(
-                    text       = "THEMES",
-                    color      = theme.fg2,
-                    fontSize   = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier   = Modifier.padding(bottom = 8.dp),
-                )
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding        = PaddingValues(bottom = 8.dp),
-                ) {
-                    items(DroidThemes.all) { t ->
-                        val isActive = t.id == currentTheme.id
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier            = Modifier.clickable { themeViewModel.setTheme(t) },
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(t.bg)
-                                    .then(if (isActive) Modifier.border(2.dp, currentTheme.accent, RoundedCornerShape(6.dp)) else Modifier),
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(18.dp)
-                                        .align(Alignment.Center)
-                                        .clip(CircleShape)
-                                        .background(t.accent)
-                                )
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text       = t.displayName.take(8),
-                                color      = if (isActive) currentTheme.accent else currentTheme.fg2,
-                                fontSize   = 7.sp,
-                                fontFamily = FontFamily.Monospace,
-                                textAlign  = TextAlign.Center,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SheetField(label: String, value: String, theme: DroidTheme, onValueChange: (String) -> Unit) {
-    Column {
-        Text(label, color = theme.fg2, fontSize = 8.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(bottom = 2.dp))
-        BasicTextField(
-            value         = value,
-            onValueChange = onValueChange,
-            modifier      = Modifier
-                .fillMaxWidth()
-                .background(theme.bg, RoundedCornerShape(4.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            textStyle     = TextStyle(color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
-            cursorBrush   = SolidColor(theme.accent),
-            singleLine    = true,
-        )
-    }
-}
-
-// ─── QUEUE tab ────────────────────────────────────────────────
+// ─── Queue tab ────────────────────────────────────────────────
 
 @Composable
 private fun PlaylistTab(
@@ -1035,459 +524,178 @@ private fun PlaylistTab(
     }
 }
 
-// ─── LIBRARY tab ─────────────────────────────────────────────
+// ─── Shared library composables (used by SearchScreen) ────────
 
 @Composable
-private fun LibraryTabContent(
-    libraryViewModel: LibraryViewModel,
-    playerViewModel:  PlayerViewModel,
-    theme:            DroidTheme,
+fun LibraryAlbumTracks(
+    album:   com.droidamp.domain.model.Album,
+    tracks:  List<Track>,
+    theme:   DroidTheme,
+    onBack:  () -> Unit,
+    onTrack: (Int) -> Unit,
 ) {
-    val uiState by libraryViewModel.uiState.collectAsState()
-
-    when {
-        uiState.isLoading && uiState.albums.isEmpty() -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = theme.accent)
-            }
-        }
-        uiState.selectedAlbum != null -> {
-            LibraryAlbumTracks(
-                album   = uiState.selectedAlbum!!,
-                tracks  = uiState.selectedAlbumTracks,
-                theme   = theme,
-                onBack  = { libraryViewModel.clearAlbumSelection() },
-                onTrack = { idx -> playerViewModel.playTracks(uiState.selectedAlbumTracks, idx) },
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(theme.panel)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("←", color = theme.accent, fontSize = 16.sp,
+                modifier = Modifier.clickable(onClick = onBack).padding(end = 10.dp))
+            Text(
+                text       = album.name,
+                color      = theme.fg,
+                fontSize   = 13.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                modifier   = Modifier.weight(1f),
+                maxLines   = 1,
+                overflow   = TextOverflow.Ellipsis,
             )
         }
-        else -> {
-            Column(Modifier.fillMaxSize()) {
+        HorizontalDivider(color = theme.border, thickness = 0.5.dp)
+        LazyColumn(Modifier.fillMaxSize()) {
+            itemsIndexed(tracks) { idx, track ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(theme.panel)
-                        .padding(horizontal = 12.dp),
+                        .clickable { onTrack(idx) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    listOf(
-                        "Albums"    to com.droidamp.ui.library.LibraryTab.Albums,
-                        "Artists"   to com.droidamp.ui.library.LibraryTab.Artists,
-                        "Playlists" to com.droidamp.ui.library.LibraryTab.Playlists,
-                    ).forEach { (label, tab) ->
-                        val active = uiState.tab::class == tab::class
-                        Text(
-                            text       = label,
-                            color      = if (active) theme.accent else theme.fg2,
-                            fontSize   = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                            modifier   = Modifier
-                                .clickable { libraryViewModel.selectTab(tab) }
-                                .padding(horizontal = 10.dp, vertical = 7.dp),
-                        )
+                    Text(
+                        if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ",
+                        color = theme.fg2, fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace, modifier = Modifier.width(24.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(track.title, color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
                     }
+                    Text(
+                        "%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000),
+                        color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                    )
                 }
                 HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                Box(Modifier.weight(1f)) {
-                    when {
-                        uiState.tab is com.droidamp.ui.library.LibraryTab.Albums -> {
-                            LibraryAlbumGrid(uiState.albums, theme) { libraryViewModel.loadAlbumTracks(it) }
-                        }
-                        uiState.tab is com.droidamp.ui.library.LibraryTab.Artists -> {
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                items(uiState.artists) { artist ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { libraryViewModel.loadArtistAlbums(artist) }
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                        Column {
-                                            Text(artist.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                            Text("${artist.albumCount} albums", color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                                        }
-                                    }
-                                    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                                }
-                            }
-                        }
-                        uiState.tab is com.droidamp.ui.library.LibraryTab.Playlists -> {
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                items(uiState.playlists) { pl ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { libraryViewModel.loadPlaylistTracks(pl) }
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    ) {
-                                        Text("≡", color = theme.accent, fontSize = 16.sp, modifier = Modifier.padding(end = 10.dp))
-                                        Column {
-                                            Text(pl.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                                            Text("${pl.trackCount} tracks", color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                                        }
-                                    }
-                                    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                                }
-                            }
-                        }
-                        else -> {}
-                    }
-                }
             }
         }
     }
 }
 
 @Composable
-private fun LibraryAlbumGrid(albums: List<Album>, theme: DroidTheme, onAlbumClick: (Album) -> Unit) {
+fun LibraryAlbumGrid(
+    albums:       List<com.droidamp.domain.model.Album>,
+    theme:        DroidTheme,
+    onAlbumClick: (com.droidamp.domain.model.Album) -> Unit,
+) {
     LazyVerticalGrid(
-        columns               = GridCells.Fixed(3),
-        contentPadding        = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement   = Arrangement.spacedBy(6.dp),
+        columns               = GridCells.Fixed(2),
+        contentPadding        = PaddingValues(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement   = Arrangement.spacedBy(8.dp),
         modifier              = Modifier.fillMaxSize(),
     ) {
         gridItems(albums) { album ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(5.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(theme.panel)
                     .clickable { onAlbumClick(album) }
-                    .padding(bottom = 5.dp),
+                    .padding(bottom = 8.dp),
             ) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f).background(theme.surface)) {
-                    if (album.coverArtId != null) AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
-                    else Text("♫", color = theme.accent, fontSize = 22.sp, modifier = Modifier.align(Alignment.Center))
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(album.name, color = theme.fg, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
-                Text(album.artist, color = theme.fg2, fontSize = 8.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun LibraryAlbumTracks(album: Album, tracks: List<Track>, theme: DroidTheme, onBack: () -> Unit, onTrack: (Int) -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().background(theme.panel).padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("← Back", color = theme.accent, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable(onClick = onBack).padding(end = 10.dp))
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)).background(theme.surface)) {
-                if (album.coverArtId != null) AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
-                else Text("♫", color = theme.accent, fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
-            }
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text(album.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(album.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-            }
-        }
-        HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-        LazyColumn(Modifier.weight(1f)) {
-            if (tracks.isEmpty()) {
-                item { Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = theme.accent) } }
-            }
-            itemsIndexed(tracks) { idx, track ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable { onTrack(idx) }.padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .background(theme.surface),
                 ) {
-                    Text(if (track.trackNumber > 0) "%02d".format(track.trackNumber) else "  ", color = theme.fg2, fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace, modifier = Modifier.width(24.dp))
-                    Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text(track.title, color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(track.suffix.uppercase(), color = theme.yellow, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-                    }
-                    Text("%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000), color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                }
-                HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-            }
-        }
-    }
-}
-
-// ─── SOURCES tab ─────────────────────────────────────────────
-
-@Composable
-private fun SourcesTab(
-    settingsViewModel:        SettingsViewModel,
-    libraryViewModel:         LibraryViewModel,
-    playerViewModel:          PlayerViewModel,
-    theme:                    DroidTheme,
-    onTrackPlayed:            () -> Unit,
-    onNavigateToLocalLibrary: () -> Unit,
-) {
-    val url        by settingsViewModel.url.collectAsState()
-    val pingStatus by settingsViewModel.pingStatus.collectAsState()
-    val libState   by libraryViewModel.uiState.collectAsState()
-
-    val isConnected = pingStatus?.startsWith("✓") == true
-    val isPending   = pingStatus == "connecting…"
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) onNavigateToLocalLibrary()
-        else libraryViewModel.refreshLocalPermission()
-    }
-
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        // ── Navidrome row ─────────────────────────────────────
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(when {
-                    isPending   -> theme.yellow
-                    isConnected -> theme.green
-                    else        -> theme.red.copy(alpha = 0.6f)
-                }))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Navidrome", color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    Text(url.ifBlank { "not configured" }, color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(pingStatus ?: "", color = if (isConnected) theme.green else theme.yellow, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-            }
-            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-        }
-        // ── Local Storage row ─────────────────────────────────
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        when {
-                            libState.isLocalScanning     -> { /* wait */ }
-                            libState.localHasPermission  -> onNavigateToLocalLibrary()
-                            else -> permissionLauncher.launch(LocalMediaRepository.REQUIRED_PERMISSION)
-                        }
-                    }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(
-                    if (libState.localHasPermission) theme.green else theme.fg2.copy(alpha = 0.3f)
-                ))
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Local Storage", color = theme.fg, fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                    Text(
-                        when {
-                            libState.isLocalScanning     -> "scanning…"
-                            !libState.localHasPermission -> "tap to grant permission"
-                            libState.localTrackCount > 0 -> "${libState.localTrackCount} tracks · tap to browse"
-                            else                         -> "tap to browse"
-                        },
-                        color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
-                    )
-                }
-                Text("LOCAL", color = theme.accent.copy(alpha = 0.7f), fontSize = 8.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.background(theme.accent.copy(alpha = 0.08f), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp))
-            }
-            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-        }
-        // ── Placeholder rows ──────────────────────────────────
-        listOf("SoundCloud" to "SC", "Bandcamp" to "BC", "Internet Radio" to "RADIO").forEach { (name, badge) ->
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(theme.fg2.copy(alpha = 0.2f)))
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(name, color = theme.fg2.copy(alpha = 0.5f), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                        Text("coming soon", color = theme.fg2.copy(alpha = 0.3f), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                    }
-                    Text(badge, color = theme.fg2.copy(alpha = 0.3f), fontSize = 8.sp, fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.background(theme.fg2.copy(alpha = 0.06f), RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp))
-                }
-                HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-            }
-        }
-    }
-}
-
-// ─── SEARCH tab ──────────────────────────────────────────────
-
-@Composable
-private fun SearchTabContent(
-    searchViewModel: SearchViewModel,
-    playerViewModel: PlayerViewModel,
-    theme:           DroidTheme,
-    onTrackPlayed:   () -> Unit,
-) {
-    val uiState by searchViewModel.uiState.collectAsState()
-
-    Column(Modifier.fillMaxSize()) {
-        // ── Search bar ────────────────────────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth().background(theme.surface).padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("⌕", color = theme.fg2, fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
-            BasicTextField(
-                value         = uiState.query,
-                onValueChange = { searchViewModel.setQuery(it) },
-                modifier      = Modifier.weight(1f),
-                textStyle     = TextStyle(color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-                cursorBrush   = SolidColor(theme.accent),
-                singleLine    = true,
-                decorationBox = { inner ->
-                    if (uiState.query.isEmpty()) Text("Search tracks, albums, artists…", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                    inner()
-                },
-            )
-            if (uiState.query.isNotEmpty()) {
-                Text("✕", color = theme.fg2, fontSize = 12.sp,
-                    modifier = Modifier.clickable { searchViewModel.setQuery("") }.padding(start = 6.dp))
-            }
-        }
-        HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-
-        when {
-            // ── Album track list ──────────────────────────────
-            uiState.selectedAlbum != null -> {
-                LibraryAlbumTracks(
-                    album   = uiState.selectedAlbum!!,
-                    tracks  = uiState.selectedAlbumTracks,
-                    theme   = theme,
-                    onBack  = { searchViewModel.clearAlbumSelection() },
-                    onTrack = { idx ->
-                        playerViewModel.playTracks(uiState.selectedAlbumTracks, idx)
-                        onTrackPlayed()
-                    },
-                )
-            }
-            // ── Artist album grid ─────────────────────────────
-            uiState.selectedArtist != null -> {
-                Column(Modifier.fillMaxSize()) {
-                    // Header with back button
-                    Row(
-                        modifier = Modifier.fillMaxWidth().background(theme.panel)
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("←", color = theme.accent, fontSize = 16.sp,
-                            modifier = Modifier.clickable { searchViewModel.clearArtistSelection() }.padding(end = 10.dp))
-                        Text(uiState.selectedArtist!!.name, color = theme.fg, fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    }
-                    HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                    if (uiState.isLoadingTracks) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = theme.accent)
-                        }
+                    if (album.coverArtId != null) {
+                        AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
                     } else {
-                        LibraryAlbumGrid(
-                            albums       = uiState.selectedArtistAlbums,
-                            theme        = theme,
-                            onAlbumClick = { searchViewModel.loadAlbumTracks(it) },
+                        Text("♫", color = theme.accent, fontSize = 32.sp, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(album.name, color = theme.fg, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
+                Text(album.artist, color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
+            }
+        }
+    }
+}
+
+// ─── Theme picker sheet ───────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemePickerSheet(
+    themeViewModel: ThemeViewModel,
+    theme:          DroidTheme,
+    onDismiss:      () -> Unit,
+) {
+    val currentTheme by themeViewModel.theme.collectAsState()
+    val sheetState   = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState       = sheetState,
+        containerColor   = theme.panel,
+        contentColor     = theme.fg,
+    ) {
+        Text(
+            text       = "THEMES",
+            color      = theme.fg2,
+            fontSize   = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier   = Modifier.padding(start = 16.dp, bottom = 10.dp),
+        )
+        LazyRow(
+            modifier              = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+            contentPadding        = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(DroidThemes.all) { t ->
+                val isActive = t.id == currentTheme.id
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier            = Modifier.clickable { themeViewModel.setTheme(t) },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(t.bg)
+                            .then(
+                                if (isActive) Modifier.border(2.dp, currentTheme.accent, RoundedCornerShape(8.dp))
+                                else Modifier
+                            ),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(22.dp)
+                                .align(Alignment.Center)
+                                .clip(CircleShape)
+                                .background(t.accent)
                         )
                     }
-                }
-            }
-            // ── Loading ───────────────────────────────────────
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = theme.accent)
-                }
-            }
-            // ── Search results ────────────────────────────────
-            uiState.query.length >= 2 -> {
-                val results = uiState.results
-                LazyColumn(Modifier.fillMaxSize()) {
-                    if (results.artists.isNotEmpty()) {
-                        item { SectionHeader("ARTISTS", theme) }
-                        items(results.artists) { artist ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickable { searchViewModel.loadArtistAlbums(artist) }
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("♪", color = theme.accent, fontSize = 14.sp, modifier = Modifier.padding(end = 10.dp))
-                                Text(artist.name, color = theme.fg, fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                                Text("›", color = theme.fg2, fontSize = 14.sp)
-                            }
-                            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                        }
-                    }
-                    if (results.albums.isNotEmpty()) {
-                        item { SectionHeader("ALBUMS", theme) }
-                        items(results.albums) { album ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickable { searchViewModel.loadAlbumTracks(album) }
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)).background(theme.surface)) {
-                                    if (album.coverArtId != null) AsyncImage(model = album.coverArtId, contentDescription = null, modifier = Modifier.fillMaxSize())
-                                    else Text("♫", color = theme.accent, fontSize = 14.sp, modifier = Modifier.align(Alignment.Center))
-                                }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(album.name, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(album.artist, color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                }
-                                Text("›", color = theme.fg2, fontSize = 14.sp)
-                            }
-                            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                        }
-                    }
-                    if (results.tracks.isNotEmpty()) {
-                        item { SectionHeader("TRACKS", theme) }
-                        itemsIndexed(results.tracks) { idx, track ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickable { playerViewModel.playTracks(results.tracks, idx); onTrackPlayed() }
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(track.title, color = theme.fg, fontSize = 12.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${track.artist} · ${track.album}", color = theme.fg2, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                Text("%d:%02d".format(track.duration / 60000, (track.duration % 60000) / 1000), color = theme.fg2, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                            }
-                            HorizontalDivider(color = theme.border, thickness = 0.5.dp)
-                        }
-                    }
-                    if (results.artists.isEmpty() && results.albums.isEmpty() && results.tracks.isEmpty()) {
-                        item {
-                            Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No results", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                            }
-                        }
-                    }
-                }
-            }
-            else -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Type to search", color = theme.fg2, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text       = t.displayName.take(9),
+                        color      = if (isActive) currentTheme.accent else currentTheme.fg2,
+                        fontSize   = 7.sp,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign  = TextAlign.Center,
+                    )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun SectionHeader(title: String, theme: DroidTheme) {
-    Text(
-        text       = title,
-        color      = theme.fg2,
-        fontSize   = 9.sp,
-        fontFamily = FontFamily.Monospace,
-        modifier   = Modifier.fillMaxWidth().background(theme.panel).padding(horizontal = 14.dp, vertical = 5.dp),
-    )
 }

@@ -30,12 +30,18 @@ class SettingsViewModel @Inject constructor(
     fun setUsername(v: String) { _username.value = v; _pingStatus.value = null }
     fun setPassword(v: String) { _password.value = v; _pingStatus.value = null }
 
-    fun save() {
-        serverUrlProvider.update(_url.value.trim(), _username.value.trim(), _password.value)
+    init { ping() }
+
+    fun ping() {
         _pingStatus.value = "connecting…"
         viewModelScope.launch {
             val ok = repo.ping().getOrNull() ?: false
             _pingStatus.value = if (ok) "✓ connected" else "✗ connection failed"
         }
+    }
+
+    fun save() {
+        serverUrlProvider.update(_url.value.trim(), _username.value.trim(), _password.value)
+        ping()
     }
 }

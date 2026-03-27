@@ -10,7 +10,18 @@
       "Bash(sed:*)",
       "Bash(./gradlew help:*)",
       "Bash(./gradlew assembleDebug 2>&1 | head -100)",
-      "Bash(./gradlew assembleDebug 2>&1 | tail -30)"
+      "Bash(./gradlew assembleDebug 2>&1 | tail -30)",
+      "Bash(./gradlew assembleDebug)",
+      "Bash(adb install:*)",
+      "Bash(adb shell:*)",
+      "Bash(jar tf:*)",
+      "Read(//tmp/**)",
+      "Bash(jar xf:*)",
+      "Bash(javap -p /tmp/org/jaudiotagger/audio/wav/util/WavInfoReader.class)",
+      "Bash(javap -p /tmp/org/jaudiotagger/tag/id3/ID3v24Tag.class)",
+      "Bash(javap -p /tmp/org/jaudiotagger/tag/id3/ID3v23Tag.class)",
+      "Bash(javap -p /tmp/org/jaudiotagger/tag/FieldKey.class)",
+      "Bash(./gradlew installDebug 2>&1)"
     ]
   }
 }
