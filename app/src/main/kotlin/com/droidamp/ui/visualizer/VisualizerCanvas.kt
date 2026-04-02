@@ -37,7 +37,7 @@ fun VisualizerCanvas(
     onSwipePrev:     () -> Unit = {},
 ) {
     var swipeAccum by remember { mutableFloatStateOf(0f) }
-    val wavePhase  = remember { mutableFloatStateOf(0f) }
+    val animTime   = remember { mutableFloatStateOf(0f) }
 
     // VU meter peak-hold state (L = bands 0-9, R = bands 10-19)
     var vuPeakL   by remember { mutableFloatStateOf(0f) }
@@ -46,7 +46,7 @@ fun VisualizerCanvas(
     var vuCountR  by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(fftData) {
-        wavePhase.value += 0.06f
+        animTime.value += 0.06f
 
         // Update VU peak hold
         val lAmp = fftData.slice(0..9).average().toFloat()
@@ -75,183 +75,13 @@ fun VisualizerCanvas(
     ) {
         drawRect(color = backgroundColor)
         when (mode) {
-            VisualizerMode.BARS         -> drawBars(fftData, accentColor, secondaryColor)
-            VisualizerMode.BRICKS       -> drawBricks(fftData, accentColor)
-            VisualizerMode.COLUMNS      -> drawColumns(fftData, accentColor)
-            VisualizerMode.RETRO        -> drawRetro(fftData, accentColor)
-            VisualizerMode.WAVE         -> drawWave(fftData, accentColor, secondaryColor, wavePhase.value)
-            VisualizerMode.FLAME        -> drawFlame(fftData, accentColor, secondaryColor)
-            VisualizerMode.SCATTER      -> drawScatter(fftData, accentColor)
             VisualizerMode.RADIAL       -> drawRadial(fftData, accentColor, secondaryColor)
+            VisualizerMode.SCATTER      -> drawScatter(fftData, accentColor)
+            VisualizerMode.BARS_REBORN  -> drawBarsReborn(fftData, accentColor)
             VisualizerMode.OSCILLOSCOPE -> drawOscilloscope(waveformData, accentColor)
+            VisualizerMode.PLASMA       -> drawPlasma(fftData, accentColor, animTime.value)
             VisualizerMode.VU_METERS    -> drawVuMeters(fftData, accentColor, secondaryColor, vuPeakL, vuPeakR)
-            VisualizerMode.NONE         -> { /* nothing */ }
         }
-    }
-}
-
-// ─── BARS (gradient + bass emphasis) ─────────────────────────
-//
-// First 5 bands are progressively wider and get a height boost
-// reflecting bass energy. All bars use a vertical gradient from
-// accent (top) to a dimmer secondary (bottom).
-private fun DrawScope.drawBars(fft: FloatArray, accent: Color, secondary: Color) {
-    val n     = fft.size
-    val gap   = size.width * 0.012f
-
-    // Bass bands 0-4 get up to 1.4× width; weight the total to keep layout flush
-    val bassW = 1.4f
-    val totalWeight = n + 5 * (bassW - 1f)          // 20 + 5*0.4 = 22
-    val baseW = (size.width - gap * (n - 1)) / totalWeight
-
-    var x = 0f
-    fft.forEachIndexed { i, amp ->
-        val bassIdx    = (4 - i).coerceAtLeast(0)   // 4,3,2,1,0 then 0
-        val isBass     = i < 5
-        val wMult      = if (isBass) bassW else 1f
-        val hMult      = if (isBass) 1f + bassIdx * 0.07f else 1f
-        val barW       = baseW * wMult
-        val barH       = (amp * hMult).coerceAtMost(1f) * size.height * 0.92f
-        val top        = size.height - barH
-
-        if (barH > 0.5f) {
-            drawRect(
-                brush   = Brush.verticalGradient(
-                    colors = listOf(accent, secondary.copy(alpha = 0.55f)),
-                    startY = top,
-                    endY   = size.height,
-                ),
-                topLeft = Offset(x, top),
-                size    = Size(barW, barH),
-            )
-        }
-        x += barW + gap
-    }
-}
-
-// ─── BRICKS ──────────────────────────────────────────────────
-private fun DrawScope.drawBricks(fft: FloatArray, color: Color) {
-    val n        = fft.size
-    val gap      = size.width * 0.015f
-    val barW     = (size.width - gap * (n - 1)) / n
-    val brickH   = size.height / 10f
-    val brickGap = 1.5f
-    fft.forEachIndexed { i, amp ->
-        val filledCount = (amp * 9).toInt().coerceIn(0, 9) + 1
-        val left = i * (barW + gap)
-        repeat(filledCount) { b ->
-            val alpha = 0.3f + (b.toFloat() / 9f) * 0.7f
-            val top   = size.height - (b + 1) * brickH + brickGap
-            drawRect(
-                color   = color.copy(alpha = alpha),
-                topLeft = Offset(left, top),
-                size    = Size(barW, brickH - brickGap),
-            )
-        }
-    }
-}
-
-// ─── COLUMNS ─────────────────────────────────────────────────
-private fun DrawScope.drawColumns(fft: FloatArray, color: Color) {
-    val n    = fft.size
-    val colW = size.width / n
-    fft.forEachIndexed { i, amp ->
-        val h     = amp * size.height * 0.92f
-        val alpha = 0.5f + amp * 0.5f
-        drawRect(
-            color   = color.copy(alpha = alpha),
-            topLeft = Offset(i * colW, size.height - h),
-            size    = Size(colW - 1f, h),
-        )
-    }
-}
-
-// ─── RETRO ───────────────────────────────────────────────────
-private fun DrawScope.drawRetro(fft: FloatArray, color: Color) {
-    val blocks = listOf("▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
-    val n      = fft.size
-    val colW   = size.width / n
-    val charH  = size.height / 8f
-    val paint  = Paint().apply {
-        isAntiAlias = true
-        typeface    = Typeface.MONOSPACE
-        textSize    = charH * 1.05f
-        textAlign   = Paint.Align.CENTER
-    }
-    drawIntoCanvas { canvas ->
-        fft.forEachIndexed { i, amp ->
-            val numChars = (amp * 8).toInt().coerceIn(1, 8)
-            val cx       = i * colW + colW / 2f
-            repeat(numChars) { c ->
-                val charIndex = if (c == numChars - 1) min(7, (amp * 8 % 1 * 7).toInt()) else 7
-                val alpha     = (0.35f + (c.toFloat() / numChars) * 0.65f).coerceIn(0f, 1f)
-                val y         = size.height - c * charH
-                paint.color   = android.graphics.Color.argb(
-                    (alpha * 255).toInt(),
-                    (color.red   * 255).toInt(),
-                    (color.green * 255).toInt(),
-                    (color.blue  * 255).toInt(),
-                )
-                canvas.nativeCanvas.drawText(blocks[charIndex], cx, y, paint)
-            }
-        }
-    }
-}
-
-// ─── WAVE ────────────────────────────────────────────────────
-private fun DrawScope.drawWave(fft: FloatArray, color: Color, secondary: Color, phase: Float) {
-    val W   = size.width
-    val H   = size.height
-    val pts = 120
-
-    val path1 = Path()
-    for (x in 0..pts) {
-        val normX  = x.toFloat() / pts
-        val ampIdx = (normX * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
-        val amp    = fft[ampIdx]
-        val y      = H / 2f + sin(normX * PI.toFloat() * 4f + phase) * amp * (H / 2f - 4f)
-        if (x == 0) path1.moveTo(normX * W, y) else path1.lineTo(normX * W, y)
-    }
-    drawPath(path1, color = color, style = Stroke(width = 2f))
-
-    val path2 = Path()
-    for (x in 0..pts) {
-        val normX  = x.toFloat() / pts
-        val ampIdx = (normX * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
-        val amp    = fft[ampIdx]
-        val y      = H / 2f + sin(normX * PI.toFloat() * 6f + phase * 1.3f) * amp * (H / 2f - 10f)
-        if (x == 0) path2.moveTo(normX * W, y) else path2.lineTo(normX * W, y)
-    }
-    drawPath(path2, color = secondary.copy(alpha = 0.45f), style = Stroke(width = 1.2f))
-}
-
-// ─── FLAME ───────────────────────────────────────────────────
-private fun DrawScope.drawFlame(fft: FloatArray, accent: Color, secondary: Color) {
-    val n    = fft.size
-    val gap  = size.width * 0.015f
-    val barW = (size.width - gap * (n - 1)) / n
-    fft.forEachIndexed { i, amp ->
-        val h    = amp * size.height * 0.92f
-        val left = i * (barW + gap)
-        val top  = size.height - h
-        drawRect(color = secondary.copy(alpha = 0.85f), topLeft = Offset(left, top),         size = Size(barW, h))
-        drawRect(color = accent.copy(alpha = 0.70f),    topLeft = Offset(left, top + h*0.3f), size = Size(barW, h*0.7f))
-        drawRect(color = accent.copy(alpha = 0.95f),    topLeft = Offset(left, top + h*0.65f),size = Size(barW, h*0.35f))
-    }
-}
-
-// ─── SCATTER ─────────────────────────────────────────────────
-private fun DrawScope.drawScatter(fft: FloatArray, color: Color) {
-    val total = 60
-    repeat(total) { i ->
-        val normI = i.toFloat() / total
-        val band  = (normI * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
-        val amp   = fft[band]
-        val x     = (i * 137.508f) % size.width
-        val y     = size.height - ((i * 97.3f + amp * size.height * 0.8f) % size.height)
-        val r     = 2f + amp * 5f
-        val alpha = (0.3f + amp * 0.7f).coerceIn(0f, 1f)
-        drawCircle(color = color.copy(alpha = alpha), radius = r, center = Offset(x, y))
     }
 }
 
@@ -313,6 +143,56 @@ private fun DrawScope.drawRadial(fft: FloatArray, accent: Color, secondary: Colo
     }
 }
 
+// ─── SCATTER ─────────────────────────────────────────────────
+private fun DrawScope.drawScatter(fft: FloatArray, color: Color) {
+    val total = 60
+    repeat(total) { i ->
+        val normI = i.toFloat() / total
+        val band  = (normI * (fft.size - 1)).toInt().coerceIn(0, fft.size - 1)
+        val amp   = fft[band]
+        val x     = (i * 137.508f) % size.width
+        val y     = size.height - ((i * 97.3f + amp * size.height * 0.8f) % size.height)
+        val r     = 2f + amp * 5f
+        val alpha = (0.3f + amp * 0.7f).coerceIn(0f, 1f)
+        drawCircle(color = color.copy(alpha = alpha), radius = r, center = Offset(x, y))
+    }
+}
+
+// ─── BARS REBORN ─────────────────────────────────────────────
+//
+// Single thick-bar mode: each band is a rounded-cap line.
+// Two passes per bar: a wider semi-transparent bloom behind,
+// then the sharp opaque bar on top.
+private fun DrawScope.drawBarsReborn(fft: FloatArray, accent: Color) {
+    val n     = fft.size
+    val slotW = size.width / n
+    val barW  = slotW * 0.72f
+
+    fft.forEachIndexed { i, amp ->
+        val barH = amp * size.height * 0.90f
+        if (barH < 1f) return@forEachIndexed
+        val cx  = i * slotW + slotW / 2f
+        val top = size.height - barH
+
+        // Bloom pass — wider and semi-transparent
+        drawLine(
+            color       = accent.copy(alpha = 0.22f),
+            start       = Offset(cx, top),
+            end         = Offset(cx, size.height),
+            strokeWidth = barW * 2.6f,
+            cap         = StrokeCap.Round,
+        )
+        // Sharp bar on top
+        drawLine(
+            color       = accent.copy(alpha = 0.92f),
+            start       = Offset(cx, top),
+            end         = Offset(cx, size.height),
+            strokeWidth = barW,
+            cap         = StrokeCap.Round,
+        )
+    }
+}
+
 // ─── OSCILLOSCOPE ────────────────────────────────────────────
 //
 // Renders actual time-domain waveform data as a single bright line
@@ -344,6 +224,85 @@ private fun DrawScope.drawOscilloscope(waveform: FloatArray, accent: Color) {
     drawPath(path, color = accent.copy(alpha = 0.40f), style = Stroke(width = 2.5f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     // Sharp trace
     drawPath(path, color = accent,                      style = Stroke(width = 1.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+// ─── PLASMA / FLUID ──────────────────────────────────────────
+//
+// Canvas-grid plasma: overlapping sine wave interference per cell.
+// Bass drives scale pulse, mid drives hue shift speed, beat drives brightness.
+// Adaptive cell size targets >= 30 fps on lower-end devices.
+private fun DrawScope.drawPlasma(fft: FloatArray, accent: Color, time: Float) {
+    val bassAmp = fft.slice(0..4).average().toFloat().coerceIn(0f, 1f)
+    val midAmp  = fft.slice(5..12).average().toFloat().coerceIn(0f, 1f)
+    val beat    = fft.average().toFloat().coerceIn(0f, 1f)
+
+    // Adaptive cell size: keep grid ≤ 24×16 to maintain 30 fps
+    val cellSize  = (size.width / 24f).coerceAtLeast(14f)
+    val cols      = (size.width  / cellSize).toInt() + 1
+    val rows      = (size.height / cellSize).toInt() + 1
+
+    // Hue base cycles over time; mid amplitude shifts hue speed
+    val hueBase    = (time * 22f + midAmp * 220f) % 360f
+    val brightness = 0.28f + beat * 0.62f
+    // Bass zoom: scales the sampling coordinates for a pronounced pulse effect
+    val scale      = 1f + bassAmp * 0.85f
+
+    // Accent hue used to tint the palette toward the theme color
+    val accentHue = colorToHue(accent)
+
+    for (row in 0..rows) {
+        for (col in 0..cols) {
+            val nx = col.toFloat() / cols.toFloat() * scale
+            val ny = row.toFloat() / rows.toFloat() * scale
+
+            val v = sin(nx * 3.1f + time) +
+                    sin(ny * 2.7f + time * 0.7f) +
+                    sin((nx + ny) * 2.3f + time * 1.3f)
+
+            // v in ~[-3, 3] → normalize to [0, 1]
+            val norm = (v / 3f + 1f) / 2f
+
+            val hue = (accentHue + hueBase * 0.4f + norm * 140f) % 360f
+            val sat = 0.75f + norm * 0.25f
+
+            drawRect(
+                color   = hslToColor(hue, sat, brightness),
+                topLeft = Offset(col * cellSize, row * cellSize),
+                size    = Size(cellSize + 0.5f, cellSize + 0.5f),  // 0.5 overlap avoids grid gaps
+            )
+        }
+    }
+}
+
+private fun colorToHue(color: Color): Float {
+    val r = color.red
+    val g = color.green
+    val b = color.blue
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val delta = max - min
+    if (delta < 0.001f) return 0f
+    val h = when (max) {
+        r    -> 60f * (((g - b) / delta) % 6f)
+        g    -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }
+    return (h + 360f) % 360f
+}
+
+private fun hslToColor(h: Float, s: Float, l: Float): Color {
+    val c = (1f - abs(2f * l - 1f)) * s
+    val x = c * (1f - abs((h / 60f) % 2f - 1f))
+    val m = l - c / 2f
+    val (r, g, b) = when {
+        h < 60f  -> Triple(c, x, 0f)
+        h < 120f -> Triple(x, c, 0f)
+        h < 180f -> Triple(0f, c, x)
+        h < 240f -> Triple(0f, x, c)
+        h < 300f -> Triple(x, 0f, c)
+        else     -> Triple(c, 0f, x)
+    }
+    return Color(r + m, g + m, b + m)
 }
 
 // ─── VU METERS ───────────────────────────────────────────────

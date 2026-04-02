@@ -2,7 +2,6 @@ package com.droidamp.ui.settings
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -33,7 +32,6 @@ import com.droidamp.ui.player.EqBand
 import com.droidamp.ui.player.PlayerViewModel
 import com.droidamp.ui.player.RgMode
 import com.droidamp.ui.theme.DroidTheme
-import com.droidamp.ui.theme.DroidThemes
 import com.droidamp.ui.theme.ThemeViewModel
 
 private val EQ_LABELS = listOf("60", "170", "310", "600", "1K", "3K", "6K", "12K", "14K", "16K")
@@ -123,57 +121,6 @@ fun SettingsScreen(
                 lines = listOf("Output device", "Sample rate", "Buffer size"),
                 theme = theme,
             )
-
-            Spacer(Modifier.height(4.dp))
-            Divider(color = theme.border)
-            Spacer(Modifier.height(4.dp))
-
-            // ── Themes section ────────────────────────────────
-            Label("THEMES", theme)
-            Spacer(Modifier.height(4.dp))
-            DroidThemes.all.chunked(3).forEach { row ->
-                Row(
-                    modifier              = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    row.forEach { t ->
-                        val isActive = t.id == theme.id
-                        Column(
-                            modifier            = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(t.bg)
-                                .then(
-                                    if (isActive) Modifier.border(2.dp, t.accent, RoundedCornerShape(8.dp))
-                                    else Modifier
-                                )
-                                .clickable { themeViewModel.setTheme(t) }
-                                .padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Row(
-                                modifier              = Modifier.fillMaxWidth().height(14.dp),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                listOf(t.accent, t.green, t.yellow, t.red).forEach { c ->
-                                    Box(modifier = Modifier.weight(1f).fillMaxHeight().background(c, RoundedCornerShape(2.dp)))
-                                }
-                            }
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                text      = t.displayName,
-                                color     = t.fg,
-                                fontSize  = 8.sp,
-                                fontFamily = FontFamily.Monospace,
-                                textAlign = TextAlign.Center,
-                                maxLines  = 2,
-                            )
-                        }
-                    }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
 
             Spacer(Modifier.height(4.dp))
             Divider(color = theme.border)

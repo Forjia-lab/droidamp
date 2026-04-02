@@ -31,7 +31,8 @@
       "Bash(javap -cp /home/niri/.gradle/caches/9.3.1/transforms/6dc5ec8cb891be04e625745314904f0a/transformed/jaudiotagger-2.2.3-api.jar org.jaudiotagger.tag.vorbiscomment.VorbisCommentFieldKey)",
       "Bash(javap -cp /home/niri/.gradle/caches/9.3.1/transforms/6dc5ec8cb891be04e625745314904f0a/transformed/jaudiotagger-2.2.3-api.jar org.jaudiotagger.tag.id3.framebody.FrameBodyTXXX)",
       "Bash(javap -cp /home/niri/.gradle/caches/9.3.1/transforms/6dc5ec8cb891be04e625745314904f0a/transformed/jaudiotagger-2.2.3-api.jar org.jaudiotagger.tag.id3.AbstractID3v2Frame)",
-      "Bash(javap -cp /home/niri/.gradle/caches/9.3.1/transforms/6dc5ec8cb891be04e625745314904f0a/transformed/jaudiotagger-2.2.3-api.jar org.jaudiotagger.tag.id3.AbstractTagFrame)"
+      "Bash(javap -cp /home/niri/.gradle/caches/9.3.1/transforms/6dc5ec8cb891be04e625745314904f0a/transformed/jaudiotagger-2.2.3-api.jar org.jaudiotagger.tag.id3.AbstractTagFrame)",
+      "Bash(adb devices:*)"
     ]
   }
 }

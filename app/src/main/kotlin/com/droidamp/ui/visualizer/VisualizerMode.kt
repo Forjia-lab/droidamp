@@ -1,19 +1,14 @@
 package com.droidamp.ui.visualizer
 
 enum class VisualizerMode(val label: String) {
-    RETRO       ("Retro"),
-    BARS        ("Bars"),
-    BRICKS      ("Bricks"),
-    COLUMNS     ("Columns"),
-    WAVE        ("Wave"),
-    FLAME       ("Flame"),
-    SCATTER     ("Scatter"),
-    RADIAL      ("Radial"),
-    OSCILLOSCOPE("Oscilloscope"),
-    VU_METERS   ("VU Meters"),
-    NONE        ("None"),
+    RADIAL       ("Radial"),
+    SCATTER      ("Scatter"),
+    BARS_REBORN  ("Bars"),
+    OSCILLOSCOPE ("Oscilloscope"),
+    PLASMA       ("Plasma"),
+    VU_METERS    ("VU Meters"),
     ;
     fun next() = entries[(ordinal + 1) % entries.size]
     fun prev() = entries[(ordinal - 1 + entries.size) % entries.size]
-    companion object { val DEFAULT = RETRO }
+    companion object { val DEFAULT = RADIAL }
 }
